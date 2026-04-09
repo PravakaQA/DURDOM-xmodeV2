@@ -23,20 +23,26 @@ git clone https://github.com/RES4LYF/RES4LYF.git
 git clone https://github.com/ZhiHui6/zhihui_nodes_comfyui.git   # ← это Qwen3VLBasic
 
 echo "📦 Устанавливаем все зависимости..."
+
+# Сначала ставим OpenCV явно и без --no-deps (это самая частая проблема)
+pip install --upgrade opencv-python opencv-python-headless || true
+
+# Теперь зависимости нод — лучше без --no-deps, или хотя бы для проблемных нод
 for dir in */; do
   if [ -f "$dir/requirements.txt" ]; then
-    echo "→ $dir"
-    pip install -r "$dir/requirements.txt" --no-deps || true
+    echo "→ Устанавливаем зависимости для $dir"
+    pip install -r "$dir/requirements.txt" || true
   fi
 done
 
+# Дополнительно — многие рекомендуют именно эту версию OpenCV для стабильности с Impact Pack и другими нодами
+# pip install opencv-python==4.6.0.66 opencv-python-headless==4.6.0.66 --force-reinstall || true
 echo "📂 Копируем workflow..."
 mkdir -p /workspace/ComfyUI/user/default/workflows
 cp /workspace/provisioning/xmode_public.json /workspace/ComfyUI/user/default/workflows/xmode_public.json
 
 echo "✅ XMODE ПОЛНОСТЬЮ ГОТОВ!"
 echo "Workflow: /workspace/ComfyUI/user/default/workflows/xmode_public.json"
-mkdir -p /workspace/ComfyUI/user/default/workflows
 cp /provisioning/xmode.json /workspace/ComfyUI/user/default/workflows/xmode.json
 
 echo "✅ X MODE (PHOTO) ГОТОВ!"
