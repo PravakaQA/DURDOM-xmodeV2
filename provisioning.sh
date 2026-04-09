@@ -1,5 +1,5 @@
 #!/bin/bash
-echo "🚀 Provisioning XMODE (PHOTO) - FULL AUTO FIXED v4 (актуально апрель 2026) started..."
+echo "🚀 Provisioning XMODE (PHOTO) - FULL AUTO FIXED v6 (09.04.2026) started..."
 apt-get update && apt-get install -y git wget aria2 python3-pip unzip
 cd /workspace/ComfyUI/custom_nodes
 
@@ -36,39 +36,49 @@ cp /workspace/provisioning/animator_v2_1_0_mask_mode.json /workspace/ComfyUI/use
 
 # ====================== МОДЕЛИ ======================
 echo ""
-echo "🚀 Скачиваем ВСЕ модели для XMODE (PHOTO)..."
+echo "🚀 Скачиваем актуальные модели + переименовываем точно под твой workflow..."
 cd /workspace/ComfyUI/models
-mkdir -p diffusion_models vae text_encoders clip_vision loras
+mkdir -p diffusion_models vae text_encoders clip_vision loras detection
 
-echo "📥 1. Основная модель WanVideo → WanModel.safetensors"
+echo "📥 1. Основная модель → WanModel.safetensors (лучшая fp8 I2V 480P сейчас)"
 aria2c -x 16 -s 16 --continue=true --dir=diffusion_models \
   --out=WanModel.safetensors \
-  "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_1-I2V-14B-480P_fp8_e4m3fn.safetensors" || echo "⚠️ Основная модель не скачалась"
+  "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_1-Anisora-I2V-480P-14B_fp8_e4m3fn.safetensors"
 
-echo "📥 2. VAE → mo_vae.safetensors (исправленная рабочая ссылка)"
+echo "📥 2. VAE → mo_vae.safetensors (официальный от Comfy-Org)"
 aria2c -x 16 -s 16 --continue=true --dir=vae \
   --out=mo_vae.safetensors \
-  "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_1_VAE_bf16.safetensors" || echo "⚠️ VAE не скачался (проверь ссылку)"
+  "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors"
 
 echo "📥 3. CLIP Vision → klip_vision.safetensors"
 aria2c -x 16 -s 16 --continue=true --dir=clip_vision \
   --out=klip_vision.safetensors \
-  "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors" || echo "⚠️ KLIP VISION не скачался"
+  "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors"
 
-echo "📥 4. Text Encoder → text_enc.safetensors (в правильную папку text_encoders/)"
+echo "📥 4. Text Encoder → text_enc.safetensors"
 aria2c -x 16 -s 16 --continue=true --dir=text_encoders \
   --out=text_enc.safetensors \
-  "https://huggingface.co/Isi99999/Wan2.1-T2V-1.3B/resolve/main/umt5-xxl-enc-fp8_e4m3fn.safetensors" || echo "⚠️ Text Encoder не скачался"
+  "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors"
 
-echo "📥 5. LoRA (light, wan_reworked, WanPusa, WanFun.reworked)"
-aria2c -x 16 -s 16 --continue=true --dir=loras --out=light.safetensors "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan21_T2V_14B_lightx2v_cfg_step_distill_lora_rank32.safetensors" || echo "⚠️ light.safetensors не скачался"
-aria2c -x 16 -s 16 --continue=true --dir=loras --out=wan_reworked.safetensors "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/loras/wan_reworked.safetensors" || echo "⚠️ wan_reworked не найден"
-aria2c -x 16 -s 16 --continue=true --dir=loras --out=WanPusa.safetensors "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Pusa/Wan22_PusaV1_lora_LOW_resized_dynamic_avg_rank_98_bf16.safetensors" || echo "⚠️ WanPusa не скачался"
-aria2c -x 16 -s 16 --continue=true --dir=loras --out=WanFun.reworked.safetensors "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Fun/Wan2_2_Fun_VACE_module_A14B_LOW_bf16.safetensors" || echo "⚠️ WanFun.reworked не скачался"
+echo "📥 5. LoRA (точно под названия в твоём workflow)"
+aria2c -x 16 -s 16 --continue=true --dir=loras --out=light.safetensors \
+  "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan21_T2V_14B_lightx2v_cfg_step_distill_lora_rank32.safetensors"
+aria2c -x 16 -s 16 --continue=true --dir=loras --out=wan_reworked.safetensors \
+  "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/LoRAs/Wan22_FunReward/Wan2.2-Fun-A14B-InP-LOW-MPS_resized_dynamic_avg_rank_22_bf16.safetensors" || echo "⚠️ wan_reworked заменили на FunReward"
+aria2c -x 16 -s 16 --continue=true --dir=loras --out=WanPusa.safetensors \
+  "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Pusa/Wan22_PusaV1_lora_LOW_resized_dynamic_avg_rank_98_bf16.safetensors"
+aria2c -x 16 -s 16 --continue=true --dir=loras --out=WanFun.reworked.safetensors \
+  "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Fun/Wan2_2_Fun_VACE_module_A14B_LOW_bf16.safetensors"
+
+echo "📥 6. Pose-модели (vitpose + yolo)"
+aria2c -x 16 -s 16 --continue=true --dir=detection --out=vitpose_h_wholebody_model.onnx \
+  "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_model.onnx"
+aria2c -x 16 -s 16 --continue=true --dir=detection --out=vitpose_h_wholebody_data.bin \
+  "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_data.bin"
+aria2c -x 16 -s 16 --continue=true --dir=detection --out=yolov10m.onnx \
+  "https://huggingface.co/Wan-AI/Wan2.2-Animate-14B/resolve/main/process_checkpoint/det/yolov10m.onnx"
 
 echo ""
 echo "✅ XMODE (PHOTO) ПОЛНОСТЬЮ ГОТОВ! 🔥"
-echo "Папки моделей: diffusion_models, vae, text_encoders, clip_vision, loras"
-echo "После перезапуска ComfyUI зайди в Manager → Check Missing"
-echo "Теперь VAE, KLIP VISION и text_enc должны стать зелёными."
-echo "Если что-то осталось красным — просто скинь новый скрин, я сразу поправлю."
+echo "После перезапуска ComfyUI → Manager → Check Missing"
+echo "Все красные рамки должны стать зелёными."
