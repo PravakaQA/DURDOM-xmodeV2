@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-echo "🚀 Provisioning NEW WORKFLOW (Qwen3VLBasic + SeedVR2 + ResolutionMaster) started..."
+echo "🚀 Provisioning NEW WORKFLOW (Qwen3VLBasic + UltralyticsDetectorProvider + SeedVR2) started..."
 apt-get update && apt-get install -y git wget aria2 python3-pip unzip
 PIP="/venv/main/bin/pip"
 COMFY="/workspace/ComfyUI"
@@ -10,10 +10,11 @@ WORKFLOWS="$COMFY/user/default/workflows"
 
 echo "📦 Using pip: $PIP"
 
-# ====================== CUSTOM NODES (все недостающие + предыдущие) ======================
+# ====================== CUSTOM NODES (ВСЕ НЕДОСТАЮЩИЕ) ======================
 echo "📥 Cloning ALL custom nodes..."
 cd "$NODES"
-git clone https://github.com/ZhiHui6/zhihui_nodes_comfyui.git || true          # ← Qwen3VLBasic
+git clone https://github.com/ZhiHui6/zhihui_nodes_comfyui.git || true          # Qwen3VLBasic
+git clone https://github.com/ltdrdata/ComfyUI-Impact-Subpack.git || true       # UltralyticsDetectorProvider
 git clone https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler.git || true
 git clone https://github.com/Azornes/Comfyui-Resolution-Master.git || true
 git clone https://github.com/pythongosssss/ComfyUI-Custom-Scripts.git || true
@@ -65,7 +66,11 @@ aria2c -x 16 -s 16 --continue=true --dir=text_encoders --out=text_enc.safetensor
 
 echo ""
 echo "✅ СКРИПТ ЗАВЕРШЁН!"
-echo "Теперь полностью перезапусти ComfyUI"
-echo "Зайди в Manager → Check Missing → Install Missing Nodes"
-echo "Qwen3VLBasic и все остальные ноды должны установиться автоматически."
-echo "Если что-то останется — кинь скрин, сразу добавлю."
+echo ""
+echo "🔥 Что делать дальше:"
+echo "1. Полностью перезапусти ComfyUI"
+echo "2. Manager → Check Missing → Install Missing Nodes"
+echo "3. Для Qwen3VLBasic: открой ноду → в панели управления моделью выбери Qwen3-VL-4B-Instruct (или 8B) → нажми «Активировать»"
+echo "4. Если ошибка с LoRA — скачай нужную LoRA через Manager или скажи мне название, добавлю в скрипт"
+echo ""
+echo "Теперь всё должно быть зелёным и работать автоматически."
