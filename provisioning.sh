@@ -67,15 +67,12 @@ cd "$MODELS"
 
 # ====================== BASE MODELS ======================
 echo "📥 Downloading base models..."
-aria2c -x 16 -s 16 --continue=true --dir="$MODELS/vae" --out=mo_vae.safetensors \
-  "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/vae.safetensors"
+aria2c -x 16 -s 16 --continue=true --dir="$MODELS/vae" --out=mo_vae.safetensors "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/vae.safetensors"
 ln -sf "$MODELS/vae/mo_vae.safetensors" "$MODELS/vae/ae.safetensors" || true
 
-aria2c -x 16 -s 16 --continue=true --dir="$MODELS/clip_vision" --out=klip_vision.safetensors \
-  "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/klip_vision.safetensors"
+aria2c -x 16 -s 16 --continue=true --dir="$MODELS/clip_vision" --out=klip_vision.safetensors "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/klip_vision.safetensors"
 
-aria2c -x 16 -s 16 --continue=true --dir="$MODELS/text_encoders" --out=text_enc.safetensors \
-  "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/text_enc.safetensors"
+aria2c -x 16 -s 16 --continue=true --dir="$MODELS/text_encoders" --out=text_enc.safetensors "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/text_enc.safetensors"
 ln -sf "$MODELS/text_encoders/text_enc.safetensors" "$MODELS/clip/text_enc.safetensors" || true
 
 # ====================== QWEN CLIP FIX ======================
@@ -100,12 +97,10 @@ fi
 
 # ====================== ДРУГИЕ МОДЕЛИ ======================
 echo "📥 Downloading additional models..."
-aria2c -x 16 -s 16 --continue=true --dir="$MODELS/diffusion_models" --out=z_image_turbo_bf16.safetensors \
-  "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/z_image_turbo_bf16.safetensors" || true
+aria2c -x 16 -s 16 --continue=true --dir="$MODELS/diffusion_models" --out=z_image_turbo_bf16.safetensors "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/z_image_turbo_bf16.safetensors" || true
 ln -sf "$MODELS/diffusion_models/z_image_turbo_bf16.safetensors" "$MODELS/unet/z_image_turbo_bf16.safetensors" || true
 
-aria2c -x 16 -s 16 --continue=true --dir="$MODELS/loras" --out=bueno-z_000001250.safetensors \
-  "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/bueno-z_000001250.safetensors" || true
+aria2c -x 16 -s 16 --continue=true --dir="$MODELS/loras" --out=bueno-z_000001250.safetensors "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/bueno-z_000001250.safetensors" || true
 
 wget -O "$MODELS/sams/sam_vit_b_01ec64.pth" "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth" || true
 ln -sf "$MODELS/sams/sam_vit_b_01ec64.pth" "$MODELS/sam/sam_vit_b_01ec64.pth" || true
@@ -114,10 +109,9 @@ wget -O "$MODELS/ultralytics/bbox/face_yolov8s.pt" "https://huggingface.co/Bings
 wget -O "$MODELS/ultralytics/bbox/hand_yolov8s.pt" "https://huggingface.co/Bingsu/adetailer/resolve/main/hand_yolov8s.pt" || true
 ln -sf "$MODELS/ultralytics/bbox/face_yolov8s.pt" "$MODELS/ultralytics/bbox/Eyeful_v2-Paired.pt" || true
 
-# ====================== FINAL ======================
 echo ""
 echo "✅ FULL WORKFLOW SETUP READY"
 echo "Перезапусти ComfyUI полностью"
-echo "В ноде Qwen3VLBasic выбери Qwen3-VL-4B-Instruct и нажми «Активировать»"
-echo "В CLIPLoader поставь clip_name = qwen_3_4b.safetensors или text_enc.safetensors"
+echo "В CLIPLoader обязательно поставь clip_name = text_enc.safetensors"
+echo "В Qwen3VLBasic выбери Qwen3-VL-4B-Instruct и нажми Активировать"
 echo "🔥 Готово"
