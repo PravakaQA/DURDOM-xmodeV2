@@ -2,6 +2,7 @@
 set -e
 echo "🚀 Provisioning FULL WORKFLOW FIXED started..."
 apt-get update && apt-get install -y git wget curl aria2 python3-pip unzip
+
 PIP="/venv/main/bin/pip"
 PY="/venv/main/bin/python"
 COMFY="/workspace/ComfyUI"
@@ -11,6 +12,7 @@ WORKFLOWS="$COMFY/user/default/workflows"
 
 MS_CACHE_ROOT="/root/.cache/modelscope"
 WS_CACHE_ROOT="/workspace/.cache/modelscope"
+
 echo "📦 Using pip: $PIP"
 echo "🐍 Using python: $PY"
 
@@ -112,9 +114,10 @@ wget -O "$MODELS/ultralytics/bbox/face_yolov8s.pt" "https://huggingface.co/Bings
 wget -O "$MODELS/ultralytics/bbox/hand_yolov8s.pt" "https://huggingface.co/Bingsu/adetailer/resolve/main/hand_yolov8s.pt" || true
 ln -sf "$MODELS/ultralytics/bbox/face_yolov8s.pt" "$MODELS/ultralytics/bbox/Eyeful_v2-Paired.pt" || true
 
+# ====================== FINAL ======================
 echo ""
 echo "✅ FULL WORKFLOW SETUP READY"
 echo "Перезапусти ComfyUI полностью"
 echo "В ноде Qwen3VLBasic выбери Qwen3-VL-4B-Instruct и нажми «Активировать»"
-echo "В CLIPLoader поставь clip_name = text_enc.safetensors (или qwen_3_4b.safetensors)"
+echo "В CLIPLoader поставь clip_name = qwen_3_4b.safetensors или text_enc.safetensors"
 echo "🔥 Готово"
