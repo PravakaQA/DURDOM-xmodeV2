@@ -1,6 +1,7 @@
 #!/bin/bash
 set -e
-echo "🚀 Provisioning FULL WORKFLOW (Qwen3VLBasic + SeedVR2 + XMODE + detectors + SAM) started..."
+
+echo "🚀 Provisioning FULL WORKFLOW FIXED (Qwen3VLBasic + SeedVR2 + XMODE + SAM + detectors) started..."
 
 apt-get update && apt-get install -y git wget curl aria2 python3-pip unzip
 
@@ -39,7 +40,7 @@ git clone https://github.com/PGCRT/CRT-Nodes.git || true
 
 echo "📦 Устанавливаем зависимости нод..."
 $PIP install --upgrade --force-reinstall opencv-python opencv-python-headless
-$PIP install -U ultralytics onnx onnxruntime-gpu segment-anything safetensors huggingface_hub || true
+$PIP install -U ultralytics onnx onnxruntime-gpu segment-anything safetensors huggingface_hub bitsandbytes transformers accelerate sentencepiece || true
 
 for dir in */; do
   if [ -f "$dir/requirements.txt" ]; then
@@ -78,23 +79,33 @@ echo "📥 Скачиваем базовые модели..."
 aria2c -x 16 -s 16 --continue=true --dir="$MODELS/vae" --out=mo_vae.safetensors \
   "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/vae.safetensors"
 
-# compatibility alias for workflows expecting ae.safetensors
+# alias for workflows expecting ae.safetensors
 ln -sf "$MODELS/vae/mo_vae.safetensors" "$MODELS/vae/ae.safetensors"
 
 # CLIP Vision
 aria2c -x 16 -s 16 --continue=true --dir="$MODELS/clip_vision" --out=klip_vision.safetensors \
   "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/klip_vision.safetensors"
 
-# Text encoder
+# Base text encoder
 aria2c -x 16 -s 16 --continue=true --dir="$MODELS/text_encoders" --out=text_enc.safetensors \
   "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/text_enc.safetensors"
 
-# keep a copy/symlink in clip too for loaders that read from models/clip
+# duplicate in clip for loaders that scan clip folder
 ln -sf "$MODELS/text_encoders/text_enc.safetensors" "$MODELS/clip/text_enc.safetensors"
 
-# compatibility alias for workflows expecting qwen_3_4b.safetensors
-ln -sf "$MODELS/text_encoders/text_enc.safetensors" "$MODELS/clip/qwen_3_4b.safetensors"
-ln -sf "$MODELS/text_encoders/text_enc.safetensors" "$MODELS/text_encoders/qwen_3_4b.safetensors"
+# ====================== REAL QWEN TEXT ENCODER ======================
+echo "📥 Пытаемся скачать реальный qwen_3_4b.safetensors..."
+aria2c -x 16 -s 16 --continue=true --dir="$MODELS/text_encoders" --out=qwen_3_4b.safetensors \
+  "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/qwen_3_4b.safetensors" || true
+
+# if real file exists, expose it in clip folder too
+if [ -f "$MODELS/text_encoders/qwen_3_4b.safetensors" ]; then
+  ln -sf "$MODELS/text_encoders/qwen_3_4b.safetensors" "$MODELS/clip/qwen_3_4b.safetensors"
+  echo "✅ real qwen_3_4b.safetensors найден"
+else
+  echo "⚠️ real qwen_3_4b.safetensors не найден в OFMHUB"
+  echo "⚠️ ФЕЙКОВЫЙ alias больше НЕ создаём, чтобы не было T5 size mismatch"
+fi
 
 # ====================== QWEN3-VL-4B-INSTRUCT ======================
 echo "📥 Скачиваем Qwen3-VL-4B-Instruct..."
@@ -113,43 +124,39 @@ aria2c -x 16 -s 16 --continue=true \
 cd "$MODELS"
 
 # ====================== XMODE / Z-IMAGE TURBO ======================
-echo "📥 Скачиваем XMODE / Z-image turbo модели..."
+echo "📥 Скачиваем XMODE / Z-image turbo..."
 
-# UNET / diffusion model expected by workflow
+# main model / unet
 aria2c -x 16 -s 16 --continue=true --dir="$MODELS/diffusion_models" --out=z_image_turbo_bf16.safetensors \
   "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/z_image_turbo_bf16.safetensors" || true
 
-# keep alias in unet too for loaders that search there
+# alias in unet folder too
 ln -sf "$MODELS/diffusion_models/z_image_turbo_bf16.safetensors" "$MODELS/unet/z_image_turbo_bf16.safetensors" || true
 
-# LoRA expected by workflow
+# user's own lora; if it exists it will be used, if not we ignore
 aria2c -x 16 -s 16 --continue=true --dir="$MODELS/loras" --out=bueno-z_000001250.safetensors \
   "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/bueno-z_000001250.safetensors" || true
 
-# ====================== SAM MODELS ======================
+# ====================== SAM ======================
 echo "📥 Скачиваем SAM..."
 wget -O "$MODELS/sams/sam_vit_b_01ec64.pth" \
   "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth" || true
 
-# keep duplicate alias for loaders using models/sam
 ln -sf "$MODELS/sams/sam_vit_b_01ec64.pth" "$MODELS/sam/sam_vit_b_01ec64.pth" || true
 
-# ====================== ULTRALYTICS / BBOX DETECTORS ======================
+# ====================== ULTRALYTICS / BBOX ======================
 echo "📥 Скачиваем bbox detectors..."
 
-# face detector
 wget -O "$MODELS/ultralytics/bbox/face_yolov8s.pt" \
   "https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8s.pt" || true
 
-# hand detector
 wget -O "$MODELS/ultralytics/bbox/hand_yolov8s.pt" \
   "https://huggingface.co/Bingsu/adetailer/resolve/main/hand_yolov8s.pt" || true
 
-# Eyeful_v2-Paired fallback alias so workflow opens even if exact model is absent
-# If later you have the exact Eyeful_v2-Paired.pt, just replace this alias with the real file.
+# fallback alias so workflow opens
 ln -sf "$MODELS/ultralytics/bbox/face_yolov8s.pt" "$MODELS/ultralytics/bbox/Eyeful_v2-Paired.pt" || true
 
-# ====================== WAN / DETECTION HELPERS (optional but useful) ======================
+# ====================== OPTIONAL DETECTION HELPERS ======================
 echo "📥 Скачиваем detection helpers..."
 aria2c -x 16 -s 16 --continue=true --dir="$MODELS/detection" --out=yolov10m.onnx \
   "https://huggingface.co/Wan-AI/Wan2.2-Animate-14B/resolve/main/process_checkpoint/det/yolov10m.onnx" || true
@@ -160,21 +167,28 @@ aria2c -x 16 -s 16 --continue=true --dir="$MODELS/detection" --out=vitpose_h_who
 aria2c -x 16 -s 16 --continue=true --dir="$MODELS/detection" --out=vitpose_h_wholebody_data.bin \
   "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_data.bin" || true
 
+# ====================== FINAL ======================
 echo ""
 echo "✅ FULL WORKFLOW SETUP ГОТОВ"
 echo ""
-echo "Что добавлено:"
-echo "  - text_enc.safetensors"
-echo "  - alias qwen_3_4b.safetensors"
+echo "Что установлено:"
 echo "  - mo_vae.safetensors"
-echo "  - alias ae.safetensors"
+echo "  - ae.safetensors (alias)"
+echo "  - klip_vision.safetensors"
+echo "  - text_enc.safetensors"
+echo "  - qwen_3_4b.safetensors (только если реально скачался)"
 echo "  - z_image_turbo_bf16.safetensors"
-echo "  - bueno-z_000001250.safetensors"
+echo "  - bueno-z_000001250.safetensors (если есть в репо)"
 echo "  - sam_vit_b_01ec64.pth"
 echo "  - bbox/face_yolov8s.pt"
 echo "  - bbox/hand_yolov8s.pt"
-echo "  - fallback bbox/Eyeful_v2-Paired.pt"
+echo "  - bbox/Eyeful_v2-Paired.pt (fallback alias)"
+echo ""
+echo "⚠️ ВАЖНО:"
+echo "  - fake alias qwen_3_4b -> text_enc УДАЛЁН"
+echo "  - именно он ломал T5 size mismatch"
 echo ""
 echo "Перезапусти ComfyUI полностью."
-echo "После запуска открой workflow и проверь, что в нодах пропали пустые списки."
+echo "Потом открой workflow и проверь:"
+echo "  - если qwen_3_4b.safetensors не скачался, выбери в ноде реальный совместимый encoder вручную"
 echo "🔥 Done."
