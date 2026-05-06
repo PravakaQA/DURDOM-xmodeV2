@@ -2,7 +2,7 @@
 set -euo pipefail
 
 echo "========================================"
-echo "🚀 DURDOM X-MODE PHOTO V2.1 — FULL FINAL PROVISION (ничего не удалено)"
+echo "🚀 DURDOM X-MODE PHOTO V2.1 — FULL FINAL PROVISION"
 echo "========================================"
 
 COMFY_DIR="/workspace/ComfyUI"
@@ -15,10 +15,9 @@ CONTROLNET_DIR="$MODELS_DIR/controlnet"
 LORAS_DIR="$MODELS_DIR/loras"
 UPSCALE_MODELS_DIR="$MODELS_DIR/upscale_models"
 
-# Новые папки для SAM и детекторов
+# Папки для SAM и детекторов
 SAM_DIR="$MODELS_DIR/sams"
 BBOX_DIR="$MODELS_DIR/ultralytics/bbox"
-LLM_DIR="$MODELS_DIR/LLM"
 
 mkdir -p \
   "$CUSTOM_NODES_DIR" \
@@ -28,7 +27,7 @@ mkdir -p \
   "$CONTROLNET_DIR" \
   "$LORAS_DIR" \
   "$UPSCALE_MODELS_DIR" \
-  "$SAM_DIR" "$BBOX_DIR" "$LLM_DIR"
+  "$SAM_DIR" "$BBOX_DIR"
 
 export DEBIAN_FRONTEND=noninteractive
 export PIP_DISABLE_PIP_VERSION_CHECK=1
@@ -198,13 +197,13 @@ download_if_missing \
   "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors" \
   "$VAE_DIR" \
   "ae.safetensors"
-# X-MODE / Control patch
+# ControlNet patch
 download_if_missing \
   "https://huggingface.co/alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union/resolve/main/Z-Image-Turbo-Fun-Controlnet-Union.safetensors" \
   "$CONTROLNET_DIR" \
   "Z-Image-Turbo-Fun-Controlnet-Union.safetensors"
 
-# === ДОБАВЛЕНО: SAM + Детекторы ===
+# SAM + Детекторы
 echo "📥 SAM Model + symlinks..."
 download_if_missing \
   "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth" \
@@ -221,19 +220,11 @@ for m in face_yolov8s.pt hand_yolov8s.pt; do
 done
 ln -sf face_yolov8s.pt Eyeful_v2-Paired.pt 2>/dev/null || true
 
-# Qwen3-VL
-echo "📥 Qwen3-VL-4B-Instruct..."
-"$PYTHON_BIN" - <<PY
-from modelscope import snapshot_download
-snapshot_download("Qwen/Qwen3-VL-4B-Instruct", cache_dir="/root/.cache/modelscope")
-PY
-
 echo "========================================"
 echo "🎨 DOWNLOADING YOUR LORA"
 echo "========================================"
 snapshot_lora_repo "Durdomcore/Maeline" "$LORAS_DIR/Durdomcore_Maeline"
 
-# Pull safetensors from subfolder to root loras if needed
 find "$LORAS_DIR/Durdomcore_Maeline" -type f \( -iname "*.safetensors" -o -iname "*.ckpt" -o -iname "*.pt" \) | while read -r f; do
   base="$(basename "$f")"
   if [ ! -f "$LORAS_DIR/$base" ]; then
@@ -245,30 +236,10 @@ done
 echo "========================================"
 echo "🧪 FINAL CHECK"
 echo "========================================"
-echo "Custom nodes installed:"
-for d in \
-  ComfyUI-Impact-Pack \
-  ComfyUI-Impact-Subpack \
-  ComfyUI-Custom-Scripts \
-  zhihui_nodes_comfyui \
-  Comfyui-Resolution-Master \
-  CRT-Nodes \
-  RES4LYF \
-  ComfyUI-SeedVR2_VideoUpscaler \
-  ComfyUI-VideoHelperSuite \
-  was-node-suite-comfyui
-do
-  if [ -d "$CUSTOM_NODES_DIR/$d" ]; then
-    echo " ✅ $d"
-  else
-    echo " ❌ $d"
-  fi
-done
-
-echo
 echo "✅ PROVISION FINISHED"
 echo "========================================"
+echo
 echo "После запуска:"
 echo "1) Полностью перезапусти ComfyUI"
 echo "2) Refresh / Rescan Models в Manager"
-echo "3) Проверь SAMLoader и детекторы"
+echo "3) В SAMLoader выбери sam_vit_b_01ec64.pth"
