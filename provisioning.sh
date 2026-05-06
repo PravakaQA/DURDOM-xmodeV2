@@ -2,7 +2,7 @@
 set -euo pipefail
 
 echo "========================================"
-echo "🚀 DURDOM X-MODE PHOTO V2.1 — FULL FINAL PROVISION + MISSING NODES"
+echo "🚀 DURDOM X-MODE PHOTO V2.1 — MAXIMUM FULL PROVISION (на базе твоего старого)"
 echo "========================================"
 
 COMFY_DIR="/workspace/ComfyUI"
@@ -15,6 +15,7 @@ CONTROLNET_DIR="$MODELS_DIR/controlnet"
 LORAS_DIR="$MODELS_DIR/loras"
 UPSCALE_MODELS_DIR="$MODELS_DIR/upscale_models"
 
+# Дополнительные папки для фиксов
 SAM_DIR="$MODELS_DIR/sams"
 BBOX_DIR="$MODELS_DIR/ultralytics/bbox"
 
@@ -35,7 +36,17 @@ export HF_HUB_DISABLE_TELEMETRY=1
 export HF_HUB_ENABLE_HF_TRANSFER=1
 export HF_TRANSFER=1
 
-APT_PKGS=(git wget curl aria2 unzip jq rsync ca-certificates python3-pip)
+APT_PKGS=(
+  git
+  wget
+  curl
+  aria2
+  unzip
+  jq
+  rsync
+  ca-certificates
+  python3-pip
+)
 echo "📦 Installing system packages..."
 apt-get update -y
 apt-get install -y "${APT_PKGS[@]}"
@@ -49,14 +60,17 @@ else
 fi
 
 echo "🐍 Python: $PYTHON_BIN"
-eval "$PIP_BIN install -U pip setuptools wheel huggingface_hub hf_transfer safetensors"
+echo "📦 Installing Python helper packages..."
+eval "$PIP_BIN install -U pip setuptools wheel"
+eval "$PIP_BIN install -U huggingface_hub hf_transfer safetensors"
 
-# ==================== ФУНКЦИИ ====================
 clone_or_update() {
   local repo_url="$1"
   local target_dir="$2"
   if [ -d "$target_dir/.git" ]; then
     echo "🔄 Updating $(basename "$target_dir")"
+    git -C "$target_dir" fetch --all --prune || true
+    git -C "$target_dir" reset --hard origin/HEAD || true
     git -C "$target_dir" pull --rebase || true
   else
     echo "📥 Cloning $(basename "$target_dir")"
@@ -71,6 +85,10 @@ install_requirements_if_exist() {
     echo "📦 Installing requirements for $(basename "$repo_dir")"
     eval "$PIP_BIN install -r \"$repo_dir/requirements.txt\"" || true
   fi
+  if [ -f "$repo_dir/requirements-cuda.txt" ]; then
+    echo "📦 Installing CUDA requirements..."
+    eval "$PIP_BIN install -r \"$repo_dir/requirements-cuda.txt\"" || true
+  fi
 }
 
 download_if_missing() {
@@ -83,8 +101,14 @@ download_if_missing() {
     return 0
   fi
   echo "📥 Downloading: $out_name"
-  aria2c --console-log-level=warn -c -x 16 -s 16 -k 1M \
-    "$url" -d "$out_dir" -o "$out_name"
+  aria2c \
+    --console-log-level=warn \
+    --summary-interval=15 \
+    -c -x 16 -s 16 -k 1M \
+    --file-allocation=none \
+    "$url" \
+    -d "$out_dir" \
+    -o "$out_name"
 }
 
 snapshot_lora_repo() {
@@ -105,8 +129,9 @@ print("LoRA repo synced:", "$repo_id")
 PY
 }
 
-# ==================== CUSTOM NODES (все нужные) ====================
-echo "📚 Cloning / Updating Custom Nodes..."
+echo "========================================"
+echo "📚 CLONING / UPDATING CUSTOM NODES"
+echo "========================================"
 clone_or_update "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git" "$CUSTOM_NODES_DIR/ComfyUI-Impact-Pack"
 clone_or_update "https://github.com/ltdrdata/ComfyUI-Impact-Subpack.git" "$CUSTOM_NODES_DIR/ComfyUI-Impact-Subpack"
 clone_or_update "https://github.com/rgthree/rgthree-comfy.git" "$CUSTOM_NODES_DIR/rgthree-comfy"
@@ -122,7 +147,9 @@ clone_or_update "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler.git" "$CU
 clone_or_update "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git" "$CUSTOM_NODES_DIR/ComfyUI-VideoHelperSuite"
 clone_or_update "https://github.com/WASasquatch/was-node-suite-comfyui.git" "$CUSTOM_NODES_DIR/was-node-suite-comfyui"
 
-echo "📦 Installing node requirements..."
+echo "========================================"
+echo "📦 INSTALLING NODE REQUIREMENTS"
+echo "========================================"
 for repo in \
   "$CUSTOM_NODES_DIR/ComfyUI-Impact-Pack" \
   "$CUSTOM_NODES_DIR/ComfyUI-Impact-Subpack" \
@@ -134,20 +161,29 @@ for repo in \
   "$CUSTOM_NODES_DIR/Comfyui-Resolution-Master" \
   "$CUSTOM_NODES_DIR/CRT-Nodes" \
   "$CUSTOM_NODES_DIR/RES4LYF" \
-  "$CUSTOM_NODES_DIR/ComfyUI-SeedVR2_VideoUpscaler"; do
+  "$CUSTOM_NODES_DIR/ComfyUI-SeedVR2_VideoUpscaler" \
+  "$CUSTOM_NODES_DIR/ComfyUI-VideoHelperSuite" \
+  "$CUSTOM_NODES_DIR/was-node-suite-comfyui"
+do
   install_requirements_if_exist "$repo"
 done
 
 echo "========================================"
+echo "🧹 CLEANING OLD CACHES"
+echo "========================================"
+find "$CUSTOM_NODES_DIR" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+
+echo "========================================"
 echo "🤖 DOWNLOADING REQUIRED MODELS"
 echo "========================================"
-download_if_missing \
-  "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors" \
-  "$DIFFUSION_DIR" "z_image_turbo_bf16.safetensors"
-
+# Правильный qwen_3_4b (vocab 256384) — именно то, что нужно workflow
 download_if_missing \
   "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors" \
   "$TEXT_ENCODERS_DIR" "qwen_3_4b.safetensors"
+
+download_if_missing \
+  "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors" \
+  "$DIFFUSION_DIR" "z_image_turbo_bf16.safetensors"
 
 download_if_missing \
   "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors" \
@@ -157,12 +193,11 @@ download_if_missing \
   "https://huggingface.co/alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union/resolve/main/Z-Image-Turbo-Fun-Controlnet-Union.safetensors" \
   "$CONTROLNET_DIR" "Z-Image-Turbo-Fun-Controlnet-Union.safetensors"
 
-# SAM + Детекторы
+# SAM + Детекторы (фикс ошибки SAMLoader)
 echo "📥 SAM Model + symlinks..."
 download_if_missing \
   "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth" \
   "$SAM_DIR" "sam_vit_b_01ec64.pth"
-
 ln -sfn "$SAM_DIR" "$MODELS_DIR/sam" 2>/dev/null || true
 ln -sfn "$SAM_DIR" "$MODELS_DIR/sam_models" 2>/dev/null || true
 
@@ -179,15 +214,16 @@ echo "🎨 DOWNLOADING YOUR LORA"
 echo "========================================"
 snapshot_lora_repo "Durdomcore/Maeline" "$LORAS_DIR/Durdomcore_Maeline"
 
-find "$LORAS_DIR/Durdomcore_Maeline" -type f \( -iname "*.safetensors" \) | while read -r f; do
+find "$LORAS_DIR/Durdomcore_Maeline" -type f \( -iname "*.safetensors" -o -iname "*.ckpt" -o -iname "*.pt" \) | while read -r f; do
   base="$(basename "$f")"
   if [ ! -f "$LORAS_DIR/$base" ]; then
+    echo "🔗 Copying LoRA to root loras: $base"
     cp -f "$f" "$LORAS_DIR/$base"
   fi
 done
 
 echo "========================================"
-echo "✅ FULL PROVISION FINISHED"
+echo "✅ MAXIMUM FULL PROVISION FINISHED"
 echo "========================================"
 echo "Теперь полностью перезапусти ComfyUI"
-echo "Затем зайди в Manager → Install Missing Nodes"
+echo "Затем Manager → Install Missing Nodes"
