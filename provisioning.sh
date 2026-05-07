@@ -1,19 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-################################################################################
-# DURDOM X-MODE PHOTO V2.1 — FULL PROVISION (SAFE MERGED VERSION)
-# - keeps the qwen_3_4b.safetensors fix that solved the T5 size issue
-# - restores all required custom nodes from the working workflow
-# - fixes SAMLoader by downloading the SAM model and placing real file copies
-#   in all common folders: models/sams, models/sam, models/sam_models
-# - restores Impact Pack / Impact Subpack / teskors utils / Custom Scripts etc.
-# - restores workflow helper files and optional extra models from the working setup
-# - auto-syncs your LoRA repo from Hugging Face
-################################################################################
-
 echo "========================================"
-echo "🚀 DURDOM X-MODE PHOTO V2.1 — FULL PROVISION"
+echo "🚀 DURDOM X-MODE PHOTO V2.1 — FINAL PINNED PROVISION"
 echo "========================================"
 
 COMFY_DIR="${COMFY_DIR:-/workspace/ComfyUI}"
@@ -88,7 +77,6 @@ else
 fi
 
 echo "🐍 Python: $PYTHON_BIN"
-echo "📦 Installing Python helper packages..."
 "$PYTHON_BIN" -m pip install -U pip setuptools wheel
 "$PYTHON_BIN" -m pip install -U huggingface_hub safetensors hf_transfer
 
@@ -99,12 +87,15 @@ clone_or_update() {
   if [ -d "$target_dir/.git" ]; then
     echo "🔄 Updating $(basename "$target_dir")"
     git -C "$target_dir" fetch --all --prune || true
+    git -C "$target_dir" reset --hard origin/HEAD || true
     git -C "$target_dir" pull --ff-only || true
   elif [ -d "$target_dir" ]; then
-    echo "⚠️ Folder exists without .git, keeping: $(basename "$target_dir")"
+    echo "⚠️ Folder exists without .git, recreating: $(basename "$target_dir")"
+    rm -rf "$target_dir"
+    git clone --depth 1 "$repo_url" "$target_dir"
   else
     echo "📥 Cloning $(basename "$target_dir")"
-    git clone --depth 1 "$repo_url" "$target_dir" || return 1
+    git clone --depth 1 "$repo_url" "$target_dir"
   fi
 }
 
@@ -136,6 +127,7 @@ download_if_missing() {
 
   echo "📥 Downloading: $out_name"
   rm -f "$out_dir/$out_name.part"
+
   aria2c \
     --allow-overwrite=true \
     --auto-file-renaming=false \
@@ -160,15 +152,6 @@ copy_if_exists() {
   if [ -f "$src" ]; then
     mkdir -p "$(dirname "$dst")"
     cp -f "$src" "$dst" || true
-  fi
-}
-
-link_if_exists() {
-  local src="$1"
-  local dst="$2"
-  if [ -e "$src" ]; then
-    mkdir -p "$(dirname "$dst")"
-    ln -sfn "$src" "$dst" || true
   fi
 }
 
@@ -201,8 +184,10 @@ fallback_install_teskors_utils() {
   "$PYTHON_BIN" - <<PY
 import os, shutil
 from huggingface_hub import snapshot_download
+
 base = "/tmp/teskors_hf"
 out = os.path.join("$CUSTOM_NODES_DIR", "comfyui-teskors-utils")
+
 snapshot_download(
     repo_id="vilone60/workbombom",
     repo_type="model",
@@ -211,6 +196,7 @@ snapshot_download(
     allow_patterns=["comfyui-teskors-utils-main/**"],
     resume_download=True,
 )
+
 src = os.path.join(base, "comfyui-teskors-utils-main")
 if os.path.isdir(src):
     if os.path.isdir(out):
@@ -223,7 +209,7 @@ PY
 }
 
 echo "========================================"
-echo "📚 CLONING / UPDATING CUSTOM NODES"
+echo "📚 CLONING CUSTOM NODES"
 echo "========================================"
 
 clone_or_update "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git" "$CUSTOM_NODES_DIR/ComfyUI-Impact-Pack" || true
@@ -241,6 +227,16 @@ clone_or_update "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler.git" "$CU
 clone_or_update "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git" "$CUSTOM_NODES_DIR/ComfyUI-VideoHelperSuite" || true
 clone_or_update "https://github.com/WASasquatch/was-node-suite-comfyui.git" "$CUSTOM_NODES_DIR/was-node-suite-comfyui" || true
 clone_or_update "https://github.com/teskor-hub/comfyui-teskors-utils.git" "$CUSTOM_NODES_DIR/comfyui-teskors-utils" || fallback_install_teskors_utils
+
+echo "========================================"
+echo "📌 PINNING WORKING COMMITS"
+echo "========================================"
+
+git -C "$CUSTOM_NODES_DIR/ComfyUI-Impact-Pack" checkout 6a517ebe06fea2b74fc41b3bd089c0d7173eeced || true
+git -C "$CUSTOM_NODES_DIR/ComfyUI-Impact-Subpack" checkout 50c7b71a6a224734cc9b21963c6d1926816a97f1 || true
+git -C "$CUSTOM_NODES_DIR/comfyui-teskors-utils" checkout cba89dd597152e08257e0bac588d59024196d49c || true
+git -C "$CUSTOM_NODES_DIR/CRT-Nodes" checkout 0703ca052b7ce00b4de399103dff131d5d0d4bec || true
+git -C "$CUSTOM_NODES_DIR/zhihui_nodes_comfyui" checkout b7834398ce507d4e95677b7bedc6863233b0ca1a || true
 
 echo "========================================"
 echo "📦 INSTALLING NODE REQUIREMENTS"
@@ -267,7 +263,7 @@ do
 done
 
 echo "========================================"
-echo "🧹 CLEANING OLD CACHES"
+echo "🧹 CLEANING PY CACHE"
 echo "========================================"
 find "$CUSTOM_NODES_DIR" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 
@@ -275,9 +271,9 @@ echo "========================================"
 echo "🤖 DOWNLOADING REQUIRED MODELS"
 echo "========================================"
 
-# -----------------------------------------------------------------------------
-# KEEP THIS FIX — it solved your qwen/T5 size mismatch issue.
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------
+# KEEP THIS FIX — qwen/T5 size mismatch fix
+# ---------------------------------------------------------
 download_if_missing \
   "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors" \
   "$TEXT_ENCODERS_DIR" \
@@ -307,10 +303,10 @@ download_if_missing \
   "$TEXT_ENCODERS_DIR" \
   "umt5-xxl-encoder-fp8-e4m3fn-scaled.safetensors"
 
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------
 # SAM FIX
-# -----------------------------------------------------------------------------
-echo "📥 SAM Model + hard copies + symlinks (фикс SAMLoader)..."
+# ---------------------------------------------------------
+echo "📥 SAM fix..."
 download_if_missing \
   "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth" \
   "$SAMS_DIR" \
@@ -319,13 +315,11 @@ download_if_missing \
 copy_if_exists "$SAMS_DIR/sam_vit_b_01ec64.pth" "$SAM_DIR/sam_vit_b_01ec64.pth"
 copy_if_exists "$SAMS_DIR/sam_vit_b_01ec64.pth" "$SAM_MODELS_DIR/sam_vit_b_01ec64.pth"
 copy_if_exists "$SAMS_DIR/sam_vit_b_01ec64.pth" "$MODELS_DIR/sam_vit_b_01ec64.pth"
-link_if_exists "$SAMS_DIR/sam_vit_b_01ec64.pth" "$SAM_DIR/current_sam_vit_b_01ec64.pth"
-link_if_exists "$SAMS_DIR/sam_vit_b_01ec64.pth" "$SAM_MODELS_DIR/current_sam_vit_b_01ec64.pth"
 
-# -----------------------------------------------------------------------------
-# Ultralytics / Impact detectors
-# -----------------------------------------------------------------------------
-echo "📥 Ultralytics / Impact detector models..."
+# ---------------------------------------------------------
+# IMPACT / ULTRALYTICS DETECTORS
+# ---------------------------------------------------------
+echo "📥 Ultralytics detectors..."
 
 download_if_missing \
   "https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8s.pt" \
@@ -361,10 +355,10 @@ download_if_missing \
 
 copy_if_exists "$BBOX_DIR/assdetailer-seg.pt" "$BBOX_DIR/assdetailer.pt"
 
-# -----------------------------------------------------------------------------
-# Optional extra workflow files
-# -----------------------------------------------------------------------------
-echo "📥 Optional extra workflow files..."
+# ---------------------------------------------------------
+# OPTIONAL EXTRA FILES FROM WORKING FLOW
+# ---------------------------------------------------------
+echo "📥 Optional extra files..."
 
 download_if_missing \
   "https://huggingface.co/gazsuv/sudoku/resolve/main/detect.safetensors" \
@@ -401,11 +395,8 @@ download_if_missing \
   "$SEEDVR2_DIR" \
   "ema_vae_fp16.safetensors"
 
-# -----------------------------------------------------------------------------
-# Your LoRA repo
-# -----------------------------------------------------------------------------
 echo "========================================"
-echo "🎨 DOWNLOADING YOUR LORA REPO"
+echo "🎨 DOWNLOADING YOUR LORA"
 echo "========================================"
 
 snapshot_lora_repo "Durdomcore/Maeline" "$LORAS_DIR/Durdomcore_Maeline"
@@ -429,42 +420,32 @@ echo "========================================"
 echo "🔎 FINAL CHECK"
 echo "========================================"
 
-echo "--- TEXT ENCODERS ---"
-ls -1 "$TEXT_ENCODERS_DIR" 2>/dev/null || true
-
-echo "--- DIFFUSION MODELS ---"
-ls -1 "$DIFFUSION_DIR" 2>/dev/null || true
-
-echo "--- VAE ---"
-ls -1 "$VAE_DIR" 2>/dev/null || true
-
-echo "--- CONTROLNET ---"
-ls -1 "$CONTROLNET_DIR" 2>/dev/null || true
-
 echo "--- SAMS ---"
-ls -1 "$SAMS_DIR" 2>/dev/null || true
+ls -lah "$SAMS_DIR" || true
 
 echo "--- SAM ---"
-ls -1 "$SAM_DIR" 2>/dev/null || true
+ls -lah "$SAM_DIR" || true
 
 echo "--- SAM_MODELS ---"
-ls -1 "$SAM_MODELS_DIR" 2>/dev/null || true
+ls -lah "$SAM_MODELS_DIR" || true
 
 echo "--- ULTRALYTICS BBOX ---"
-ls -1 "$BBOX_DIR" 2>/dev/null || true
+ls -lah "$BBOX_DIR" || true
 
 echo "--- ULTRALYTICS SEGM ---"
-ls -1 "$SEGM_DIR" 2>/dev/null || true
+ls -lah "$SEGM_DIR" || true
+
+echo "--- TEXT ENCODERS ---"
+ls -lah "$TEXT_ENCODERS_DIR" || true
 
 echo "--- LORAS ---"
-ls -1 "$LORAS_DIR" 2>/dev/null || true
+ls -lah "$LORAS_DIR" | tail -50 || true
 
 echo "========================================"
-echo "✅ FULL PROVISION FINISHED"
+echo "✅ FINAL PROVISION FINISHED"
 echo "========================================"
-echo "ДАЛЬШЕ ОБЯЗАТЕЛЬНО:"
-echo "1) Полностью перезапусти инстанс / Docker контейнер"
-echo "2) Потом обнови страницу ComfyUI"
-echo "3) Открой workflow заново"
-echo "4) Если SAM dropdown был серым — после полного рестарта он должен увидеть sam_vit_b_01ec64.pth"
-echo "5) Если что-то ещё останется красным — скинь новый лог и список missing nodes"
+echo "ДАЛЬШЕ:"
+echo "1) ПОЛНОСТЬЮ пересоздай контейнер"
+echo "2) дождись полного окончания provision"
+echo "3) только потом открывай ComfyUI"
+echo "4) НЕ обновляй больше все ноды в менеджере"
