@@ -2,7 +2,7 @@
 set -euo pipefail
 
 echo "========================================"
-echo "🚀 DURDOM X-MODE PHOTO V2.1 — FINAL PINNED PROVISION"
+echo "🚀 DURDOM X-MODE PHOTO V2.1 — FINAL PROVISION V2"
 echo "========================================"
 
 COMFY_DIR="${COMFY_DIR:-/workspace/ComfyUI}"
@@ -15,7 +15,7 @@ UNET_DIR="$MODELS_DIR/unet"
 TEXT_ENCODERS_DIR="$MODELS_DIR/text_encoders"
 CLIP_DIR="$MODELS_DIR/clip"
 VAE_DIR="$MODELS_DIR/vae"
-CONTROLNET_DIR="$MODELS_DIR/controlnet"
+MODEL_PATCHES_DIR="$MODELS_DIR/model_patches"
 LORAS_DIR="$MODELS_DIR/loras"
 UPSCALE_MODELS_DIR="$MODELS_DIR/upscale_models"
 SEEDVR2_DIR="$MODELS_DIR/SEEDVR2"
@@ -35,7 +35,7 @@ mkdir -p \
   "$TEXT_ENCODERS_DIR" \
   "$CLIP_DIR" \
   "$VAE_DIR" \
-  "$CONTROLNET_DIR" \
+  "$MODEL_PATCHES_DIR" \
   "$LORAS_DIR" \
   "$UPSCALE_MODELS_DIR" \
   "$SEEDVR2_DIR" \
@@ -229,14 +229,19 @@ clone_or_update "https://github.com/WASasquatch/was-node-suite-comfyui.git" "$CU
 clone_or_update "https://github.com/teskor-hub/comfyui-teskors-utils.git" "$CUSTOM_NODES_DIR/comfyui-teskors-utils" || fallback_install_teskors_utils
 
 echo "========================================"
-echo "📌 PINNING WORKING COMMITS"
+echo "📌 PINNING TO OLD TEMPLATE COMMITS"
 echo "========================================"
 
-git -C "$CUSTOM_NODES_DIR/ComfyUI-Impact-Pack" checkout 6a517ebe06fea2b74fc41b3bd089c0d7173eeced || true
+git -C "$CUSTOM_NODES_DIR/ComfyUI-Impact-Pack" checkout 429d0159ad429e64d2b3916e6e7be9c22d025c3c || true
 git -C "$CUSTOM_NODES_DIR/ComfyUI-Impact-Subpack" checkout 50c7b71a6a224734cc9b21963c6d1926816a97f1 || true
-git -C "$CUSTOM_NODES_DIR/comfyui-teskors-utils" checkout cba89dd597152e08257e0bac588d59024196d49c || true
-git -C "$CUSTOM_NODES_DIR/CRT-Nodes" checkout 0703ca052b7ce00b4de399103dff131d5d0d4bec || true
-git -C "$CUSTOM_NODES_DIR/zhihui_nodes_comfyui" checkout b7834398ce507d4e95677b7bedc6863233b0ca1a || true
+git -C "$CUSTOM_NODES_DIR/ComfyUI-Custom-Scripts" checkout 609f3afaa74b2f88ef9ce8d939626065e3247469 || true
+git -C "$CUSTOM_NODES_DIR/ComfyUI-SeedVR2_VideoUpscaler" checkout 4490bd1f482e026674543386bb2a4d176da245b9 || true
+git -C "$CUSTOM_NODES_DIR/RES4LYF" checkout 0dc91c00c4c3fb38e7874fcd7a2a327765e8882c || true
+git -C "$CUSTOM_NODES_DIR/zhihui_nodes_comfyui" checkout 7ce81cd4d384d8e82543574b0e26cec08a182164 || true
+git -C "$CUSTOM_NODES_DIR/ComfyUI-KJNodes" checkout d0d61754bf7fa57f2abb4714cdf79058f5862a55 || true
+git -C "$CUSTOM_NODES_DIR/CRT-Nodes" checkout 71649f7b71ad14cedb79182e65ee19edd2943374 || true
+git -C "$CUSTOM_NODES_DIR/comfyui-teskors-utils" checkout c4a8cd1b6f8b724b055cbe371d6192e42babe103 || true
+git -C "$CUSTOM_NODES_DIR/Comfyui-Resolution-Master" checkout 6f5756bb9b72047565b3f07f2a6aeb92ddce8fbe || true
 
 echo "========================================"
 echo "📦 INSTALLING NODE REQUIREMENTS"
@@ -271,22 +276,17 @@ echo "========================================"
 echo "🤖 DOWNLOADING REQUIRED MODELS"
 echo "========================================"
 
-# ---------------------------------------------------------
-# KEEP THIS FIX — qwen/T5 size mismatch fix
-# ---------------------------------------------------------
 download_if_missing \
   "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors" \
-  "$TEXT_ENCODERS_DIR" \
+  "$CLIP_DIR" \
   "qwen_3_4b.safetensors"
-
-copy_if_exists "$TEXT_ENCODERS_DIR/qwen_3_4b.safetensors" "$CLIP_DIR/qwen_3_4b.safetensors"
+copy_if_exists "$CLIP_DIR/qwen_3_4b.safetensors" "$TEXT_ENCODERS_DIR/qwen_3_4b.safetensors"
 
 download_if_missing \
   "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors" \
-  "$DIFFUSION_DIR" \
+  "$UNET_DIR" \
   "z_image_turbo_bf16.safetensors"
-
-copy_if_exists "$DIFFUSION_DIR/z_image_turbo_bf16.safetensors" "$UNET_DIR/z_image_turbo_bf16.safetensors"
+copy_if_exists "$UNET_DIR/z_image_turbo_bf16.safetensors" "$DIFFUSION_DIR/z_image_turbo_bf16.safetensors"
 
 download_if_missing \
   "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors" \
@@ -295,31 +295,25 @@ download_if_missing \
 
 download_if_missing \
   "https://huggingface.co/alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union/resolve/main/Z-Image-Turbo-Fun-Controlnet-Union.safetensors" \
-  "$CONTROLNET_DIR" \
+  "$MODEL_PATCHES_DIR" \
   "Z-Image-Turbo-Fun-Controlnet-Union.safetensors"
 
 download_if_missing \
-  "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5-xxl-encoder-fp8-e4m3fn-scaled.safetensors" \
-  "$TEXT_ENCODERS_DIR" \
-  "umt5-xxl-encoder-fp8-e4m3fn-scaled.safetensors"
+  "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/seedvr2_ema_7b_sharp_fp16.safetensors" \
+  "$SEEDVR2_DIR" \
+  "seedvr2_ema_7b_sharp_fp16.safetensors"
 
-# ---------------------------------------------------------
-# SAM FIX
-# ---------------------------------------------------------
-echo "📥 SAM fix..."
+download_if_missing \
+  "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/ema_vae_fp16.safetensors" \
+  "$SEEDVR2_DIR" \
+  "ema_vae_fp16.safetensors"
+
 download_if_missing \
   "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth" \
   "$SAMS_DIR" \
   "sam_vit_b_01ec64.pth"
-
 copy_if_exists "$SAMS_DIR/sam_vit_b_01ec64.pth" "$SAM_DIR/sam_vit_b_01ec64.pth"
 copy_if_exists "$SAMS_DIR/sam_vit_b_01ec64.pth" "$SAM_MODELS_DIR/sam_vit_b_01ec64.pth"
-copy_if_exists "$SAMS_DIR/sam_vit_b_01ec64.pth" "$MODELS_DIR/sam_vit_b_01ec64.pth"
-
-# ---------------------------------------------------------
-# IMPACT / ULTRALYTICS DETECTORS
-# ---------------------------------------------------------
-echo "📥 Ultralytics detectors..."
 
 download_if_missing \
   "https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8s.pt" \
@@ -330,11 +324,6 @@ download_if_missing \
   "https://huggingface.co/Bingsu/adetailer/resolve/main/hand_yolov8s.pt" \
   "$BBOX_DIR" \
   "hand_yolov8s.pt"
-
-download_if_missing \
-  "https://huggingface.co/Bingsu/adetailer/resolve/main/person_yolov8s-seg.pt" \
-  "$SEGM_DIR" \
-  "person_yolov8s-seg.pt"
 
 copy_if_exists "$BBOX_DIR/face_yolov8s.pt" "$BBOX_DIR/Eyeful_v2-Paired.pt"
 
@@ -352,13 +341,7 @@ download_if_missing \
   "https://huggingface.co/Kentus/Adetailer/resolve/main/assdetailer-seg.pt" \
   "$BBOX_DIR" \
   "assdetailer-seg.pt"
-
 copy_if_exists "$BBOX_DIR/assdetailer-seg.pt" "$BBOX_DIR/assdetailer.pt"
-
-# ---------------------------------------------------------
-# OPTIONAL EXTRA FILES FROM WORKING FLOW
-# ---------------------------------------------------------
-echo "📥 Optional extra files..."
 
 download_if_missing \
   "https://huggingface.co/gazsuv/sudoku/resolve/main/detect.safetensors" \
@@ -385,16 +368,6 @@ download_if_missing \
   "$UPSCALE_MODELS_DIR" \
   "4xUltrasharp_4xUltrasharpV10.pt"
 
-download_if_missing \
-  "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/seedvr2_ema_7b_sharp_fp16.safetensors" \
-  "$SEEDVR2_DIR" \
-  "seedvr2_ema_7b_sharp_fp16.safetensors"
-
-download_if_missing \
-  "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/ema_vae_fp16.safetensors" \
-  "$SEEDVR2_DIR" \
-  "ema_vae_fp16.safetensors"
-
 echo "========================================"
 echo "🎨 DOWNLOADING YOUR LORA"
 echo "========================================"
@@ -404,7 +377,6 @@ snapshot_lora_repo "Durdomcore/Maeline" "$LORAS_DIR/Durdomcore_Maeline"
 find "$LORAS_DIR/Durdomcore_Maeline" -type f \( -iname "*.safetensors" -o -iname "*.ckpt" -o -iname "*.pt" -o -iname "*.bin" \) | while read -r f; do
   base="$(basename "$f")"
   if [ ! -f "$LORAS_DIR/$base" ]; then
-    echo "🔗 Copying LoRA to root loras: $base"
     cp -f "$f" "$LORAS_DIR/$base"
   fi
 done
@@ -417,35 +389,38 @@ if [ ! -f "$LORAS_DIR/bueno-z_000001250.safetensors" ]; then
 fi
 
 echo "========================================"
+echo "🔎 VERIFY PINNED COMMITS"
+echo "========================================"
+git -C "$CUSTOM_NODES_DIR/ComfyUI-Impact-Pack" rev-parse HEAD || true
+git -C "$CUSTOM_NODES_DIR/ComfyUI-Impact-Subpack" rev-parse HEAD || true
+git -C "$CUSTOM_NODES_DIR/ComfyUI-Custom-Scripts" rev-parse HEAD || true
+git -C "$CUSTOM_NODES_DIR/ComfyUI-SeedVR2_VideoUpscaler" rev-parse HEAD || true
+git -C "$CUSTOM_NODES_DIR/RES4LYF" rev-parse HEAD || true
+git -C "$CUSTOM_NODES_DIR/zhihui_nodes_comfyui" rev-parse HEAD || true
+git -C "$CUSTOM_NODES_DIR/ComfyUI-KJNodes" rev-parse HEAD || true
+git -C "$CUSTOM_NODES_DIR/CRT-Nodes" rev-parse HEAD || true
+git -C "$CUSTOM_NODES_DIR/comfyui-teskors-utils" rev-parse HEAD || true
+git -C "$CUSTOM_NODES_DIR/Comfyui-Resolution-Master" rev-parse HEAD || true
+
+echo "========================================"
 echo "🔎 FINAL CHECK"
 echo "========================================"
-
-echo "--- SAMS ---"
-ls -lah "$SAMS_DIR" || true
-
-echo "--- SAM ---"
-ls -lah "$SAM_DIR" || true
-
-echo "--- SAM_MODELS ---"
-ls -lah "$SAM_MODELS_DIR" || true
-
-echo "--- ULTRALYTICS BBOX ---"
-ls -lah "$BBOX_DIR" || true
-
-echo "--- ULTRALYTICS SEGM ---"
-ls -lah "$SEGM_DIR" || true
-
-echo "--- TEXT ENCODERS ---"
-ls -lah "$TEXT_ENCODERS_DIR" || true
-
-echo "--- LORAS ---"
-ls -lah "$LORAS_DIR" | tail -50 || true
+echo "--- SAMS ---"; ls -lah "$SAMS_DIR" || true
+echo "--- SAM ---"; ls -lah "$SAM_DIR" || true
+echo "--- SAM_MODELS ---"; ls -lah "$SAM_MODELS_DIR" || true
+echo "--- ULTRALYTICS BBOX ---"; ls -lah "$BBOX_DIR" || true
+echo "--- MODEL PATCHES ---"; ls -lah "$MODEL_PATCHES_DIR" || true
+echo "--- CLIP ---"; ls -lah "$CLIP_DIR" || true
+echo "--- UNET ---"; ls -lah "$UNET_DIR" || true
+echo "--- VAE ---"; ls -lah "$VAE_DIR" || true
+echo "--- CHECKPOINTS ---"; ls -lah "$CHECKPOINTS_DIR" || true
+echo "--- SEEDVR2 ---"; ls -lah "$SEEDVR2_DIR" || true
+echo "--- LORAS ---"; ls -lah "$LORAS_DIR" | tail -50 || true
 
 echo "========================================"
-echo "✅ FINAL PROVISION FINISHED"
+echo "✅ FINAL PROVISION V2 FINISHED"
 echo "========================================"
-echo "ДАЛЬШЕ:"
 echo "1) ПОЛНОСТЬЮ пересоздай контейнер"
-echo "2) дождись полного окончания provision"
-echo "3) только потом открывай ComfyUI"
-echo "4) НЕ обновляй больше все ноды в менеджере"
+echo "2) не жми Update All в Manager"
+echo "3) дождись конца provision"
+echo "4) если SAM всё ещё серый — скинь только блоки VERIFY PINNED COMMITS и FINAL CHECK"
