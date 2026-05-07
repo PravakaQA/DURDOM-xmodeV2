@@ -2,7 +2,7 @@
 set -euo pipefail
 
 echo "========================================"
-echo "🚀 DURDOM X-MODE PHOTO V2.1 — FINAL PROVISION V2"
+echo "🚀 DURDOM X-MODE PHOTO V2.1 — FINAL PROVISION V4"
 echo "========================================"
 
 COMFY_DIR="${COMFY_DIR:-/workspace/ComfyUI}"
@@ -78,7 +78,7 @@ fi
 
 echo "🐍 Python: $PYTHON_BIN"
 "$PYTHON_BIN" -m pip install -U pip setuptools wheel
-"$PYTHON_BIN" -m pip install -U huggingface_hub safetensors hf_transfer
+"$PYTHON_BIN" -m pip install -U "huggingface_hub<1.0" safetensors hf_transfer
 
 clone_or_update() {
   local repo_url="$1"
@@ -101,14 +101,22 @@ clone_or_update() {
 
 install_requirements_if_exist() {
   local repo_dir="$1"
+  local repo_name
+  repo_name="$(basename "$repo_dir")"
 
   if [ -f "$repo_dir/requirements.txt" ]; then
-    echo "📦 Installing requirements for $(basename "$repo_dir")"
-    "$PYTHON_BIN" -m pip install -r "$repo_dir/requirements.txt" || true
+    echo "📦 Installing requirements for $repo_name"
+
+    if [ "$repo_name" = "ComfyUI-Impact-Pack" ]; then
+      grep -viE 'facebookresearch/sam2|^sam2([[:space:]=<>].*)?$' "$repo_dir/requirements.txt" > /tmp/impact_requirements_filtered.txt
+      "$PYTHON_BIN" -m pip install -r /tmp/impact_requirements_filtered.txt || true
+    else
+      "$PYTHON_BIN" -m pip install -r "$repo_dir/requirements.txt" || true
+    fi
   fi
 
   if [ -f "$repo_dir/requirements-cuda.txt" ]; then
-    echo "📦 Installing CUDA requirements for $(basename "$repo_dir")"
+    echo "📦 Installing CUDA requirements for $repo_name"
     "$PYTHON_BIN" -m pip install -r "$repo_dir/requirements-cuda.txt" || true
   fi
 }
@@ -228,6 +236,9 @@ clone_or_update "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git" "$
 clone_or_update "https://github.com/WASasquatch/was-node-suite-comfyui.git" "$CUSTOM_NODES_DIR/was-node-suite-comfyui" || true
 clone_or_update "https://github.com/teskor-hub/comfyui-teskors-utils.git" "$CUSTOM_NODES_DIR/comfyui-teskors-utils" || fallback_install_teskors_utils
 
+# NEW: Hugging Face downloader button/menu
+clone_or_update "https://github.com/jnxmx/ComfyUI_HuggingFace_Downloader.git" "$CUSTOM_NODES_DIR/ComfyUI_HuggingFace_Downloader" || true
+
 echo "========================================"
 echo "📌 PINNING TO OLD TEMPLATE COMMITS"
 echo "========================================"
@@ -262,7 +273,8 @@ for repo in \
   "$CUSTOM_NODES_DIR/ComfyUI-SeedVR2_VideoUpscaler" \
   "$CUSTOM_NODES_DIR/ComfyUI-VideoHelperSuite" \
   "$CUSTOM_NODES_DIR/was-node-suite-comfyui" \
-  "$CUSTOM_NODES_DIR/comfyui-teskors-utils"
+  "$CUSTOM_NODES_DIR/comfyui-teskors-utils" \
+  "$CUSTOM_NODES_DIR/ComfyUI_HuggingFace_Downloader"
 do
   [ -d "$repo" ] && install_requirements_if_exist "$repo"
 done
@@ -299,6 +311,11 @@ download_if_missing \
   "Z-Image-Turbo-Fun-Controlnet-Union.safetensors"
 
 download_if_missing \
+  "https://huggingface.co/gazsuv/sudoku/resolve/main/detect.safetensors" \
+  "$CHECKPOINTS_DIR" \
+  "detect.safetensors"
+
+download_if_missing \
   "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/seedvr2_ema_7b_sharp_fp16.safetensors" \
   "$SEEDVR2_DIR" \
   "seedvr2_ema_7b_sharp_fp16.safetensors"
@@ -325,6 +342,11 @@ download_if_missing \
   "$BBOX_DIR" \
   "hand_yolov8s.pt"
 
+download_if_missing \
+  "https://huggingface.co/Bingsu/adetailer/resolve/main/person_yolov8s-seg.pt" \
+  "$SEGM_DIR" \
+  "person_yolov8s-seg.pt"
+
 copy_if_exists "$BBOX_DIR/face_yolov8s.pt" "$BBOX_DIR/Eyeful_v2-Paired.pt"
 
 download_if_missing \
@@ -342,11 +364,6 @@ download_if_missing \
   "$BBOX_DIR" \
   "assdetailer-seg.pt"
 copy_if_exists "$BBOX_DIR/assdetailer-seg.pt" "$BBOX_DIR/assdetailer.pt"
-
-download_if_missing \
-  "https://huggingface.co/gazsuv/sudoku/resolve/main/detect.safetensors" \
-  "$CHECKPOINTS_DIR" \
-  "detect.safetensors"
 
 download_if_missing \
   "https://huggingface.co/gazsuv/sudoku/resolve/main/XXX.safetensors" \
@@ -372,20 +389,35 @@ echo "========================================"
 echo "🎨 DOWNLOADING YOUR LORA"
 echo "========================================"
 
-snapshot_lora_repo "Durdomcore/Maeline" "$LORAS_DIR/Durdomcore_Maeline"
+mkdir -p "$LORAS_DIR"
+mkdir -p "$LORAS_DIR/Durdomcore_Maeline"
 
-find "$LORAS_DIR/Durdomcore_Maeline" -type f \( -iname "*.safetensors" -o -iname "*.ckpt" -o -iname "*.pt" -o -iname "*.bin" \) | while read -r f; do
-  base="$(basename "$f")"
-  if [ ! -f "$LORAS_DIR/$base" ]; then
-    cp -f "$f" "$LORAS_DIR/$base"
-  fi
-done
+"$PYTHON_BIN" - <<PY || true
+from huggingface_hub import snapshot_download
 
-if [ ! -f "$LORAS_DIR/bueno-z_000001250.safetensors" ]; then
-  download_if_missing \
-    "https://huggingface.co/Durdomcore/Maeline/resolve/ff1cff370485174914b9644df0d5450e2fe8c2cb/bueno-z_000001250.safetensors" \
-    "$LORAS_DIR" \
-    "bueno-z_000001250.safetensors"
+snapshot_download(
+    repo_id="Durdomcore/Maeline",
+    local_dir="$LORAS_DIR/Durdomcore_Maeline",
+    local_dir_use_symlinks=False,
+    allow_patterns=["*.safetensors", "*.ckpt", "*.pt", "*.bin"],
+    resume_download=True,
+)
+print("LoRA repo synced")
+PY
+
+download_if_missing \
+  "https://huggingface.co/Durdomcore/Maeline/resolve/main/bueno-z_000001250.safetensors" \
+  "$LORAS_DIR" \
+  "bueno-z_000001250.safetensors" || true
+
+download_if_missing \
+  "https://huggingface.co/Durdomcore/Maeline/resolve/ff1cff370485174914b9644df0d5450e2fe8c2cb/bueno-z_000001250.safetensors" \
+  "$LORAS_DIR" \
+  "bueno-z_000001250.safetensors" || true
+
+FOUND_LORA="$(find "$LORAS_DIR/Durdomcore_Maeline" -type f -name 'bueno-z_000001250.safetensors' | head -n 1 || true)"
+if [ -n "${FOUND_LORA:-}" ] && [ -f "$FOUND_LORA" ]; then
+  cp -f "$FOUND_LORA" "$LORAS_DIR/bueno-z_000001250.safetensors"
 fi
 
 echo "========================================"
@@ -401,6 +433,7 @@ git -C "$CUSTOM_NODES_DIR/ComfyUI-KJNodes" rev-parse HEAD || true
 git -C "$CUSTOM_NODES_DIR/CRT-Nodes" rev-parse HEAD || true
 git -C "$CUSTOM_NODES_DIR/comfyui-teskors-utils" rev-parse HEAD || true
 git -C "$CUSTOM_NODES_DIR/Comfyui-Resolution-Master" rev-parse HEAD || true
+git -C "$CUSTOM_NODES_DIR/ComfyUI_HuggingFace_Downloader" rev-parse HEAD || true
 
 echo "========================================"
 echo "🔎 FINAL CHECK"
@@ -409,18 +442,21 @@ echo "--- SAMS ---"; ls -lah "$SAMS_DIR" || true
 echo "--- SAM ---"; ls -lah "$SAM_DIR" || true
 echo "--- SAM_MODELS ---"; ls -lah "$SAM_MODELS_DIR" || true
 echo "--- ULTRALYTICS BBOX ---"; ls -lah "$BBOX_DIR" || true
+echo "--- ULTRALYTICS SEGM ---"; ls -lah "$SEGM_DIR" || true
 echo "--- MODEL PATCHES ---"; ls -lah "$MODEL_PATCHES_DIR" || true
 echo "--- CLIP ---"; ls -lah "$CLIP_DIR" || true
 echo "--- UNET ---"; ls -lah "$UNET_DIR" || true
 echo "--- VAE ---"; ls -lah "$VAE_DIR" || true
 echo "--- CHECKPOINTS ---"; ls -lah "$CHECKPOINTS_DIR" || true
 echo "--- SEEDVR2 ---"; ls -lah "$SEEDVR2_DIR" || true
-echo "--- LORAS ---"; ls -lah "$LORAS_DIR" | tail -50 || true
+echo "--- LORAS ---"; find "$LORAS_DIR" -maxdepth 3 -type f | sort || true
 
 echo "========================================"
-echo "✅ FINAL PROVISION V2 FINISHED"
+echo "✅ FINAL PROVISION V4 FINISHED"
 echo "========================================"
 echo "1) ПОЛНОСТЬЮ пересоздай контейнер"
 echo "2) не жми Update All в Manager"
 echo "3) дождись конца provision"
-echo "4) если SAM всё ещё серый — скинь только блоки VERIFY PINNED COMMITS и FINAL CHECK"
+echo "4) потом только открывай workflow"
+echo "5) для Hugging Face downloader вставляй ПРЯМУЮ ссылку на файл .safetensors"
+echo "6) если кнопка не появилась — значит надо отдельно проверить startup flags ComfyUI/Manager"
