@@ -1,108 +1,108 @@
 #!/usr/bin/env bash
-set -Eeuo pipefail
+set -euo pipefail
 
-echo "🚀 DURDOM X-MODE PHOTO V2.1 - PROVISION START"
+echo "========================================"
+echo "🚀 DURDOM X-MODE PHOTO V2.1 — MAXIMUM FULL PROVISION"
+echo "========================================"
+
+COMFY_DIR="/workspace/ComfyUI"
+CUSTOM_NODES_DIR="$COMFY_DIR/custom_nodes"
+MODELS_DIR="$COMFY_DIR/models"
+
+DIFFUSION_DIR="$MODELS_DIR/diffusion_models"
+TEXT_ENCODERS_DIR="$MODELS_DIR/text_encoders"
+VAE_DIR="$MODELS_DIR/vae"
+CONTROLNET_DIR="$MODELS_DIR/controlnet"
+LORAS_DIR="$MODELS_DIR/loras"
+UPSCALE_MODELS_DIR="$MODELS_DIR/upscale_models"
+
+# Дополнительные папки
+SAM_DIR="$MODELS_DIR/sams"
+SAM_ALT_DIR_1="$MODELS_DIR/sam"
+SAM_ALT_DIR_2="$MODELS_DIR/sam_models"
+
+BBOX_DIR="$MODELS_DIR/ultralytics/bbox"
+SEGM_DIR="$MODELS_DIR/ultralytics/segm"
+
+mkdir -p \
+  "$CUSTOM_NODES_DIR" \
+  "$DIFFUSION_DIR" \
+  "$TEXT_ENCODERS_DIR" \
+  "$VAE_DIR" \
+  "$CONTROLNET_DIR" \
+  "$LORAS_DIR" \
+  "$UPSCALE_MODELS_DIR" \
+  "$SAM_DIR" \
+  "$SAM_ALT_DIR_1" \
+  "$SAM_ALT_DIR_2" \
+  "$BBOX_DIR" \
+  "$SEGM_DIR"
 
 export DEBIAN_FRONTEND=noninteractive
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 export PYTHONUNBUFFERED=1
-export HF_HUB_DISABLE_XET=1
-export HF_HUB_ENABLE_HF_TRANSFER=0
+export HF_HUB_DISABLE_TELEMETRY=1
+export HF_HUB_ENABLE_HF_TRANSFER=1
+export HF_TRANSFER=1
 
-COMFY_ROOT="${COMFY_ROOT:-/workspace/ComfyUI}"
-CUSTOM_NODES_DIR="${CUSTOM_NODES_DIR:-$COMFY_ROOT/custom_nodes}"
-MODELS_DIR="${MODELS_DIR:-$COMFY_ROOT/models}"
-INPUT_DIR="${INPUT_DIR:-$COMFY_ROOT/input}"
+APT_PKGS=(
+  git
+  wget
+  curl
+  aria2
+  unzip
+  jq
+  rsync
+  ca-certificates
+  python3-pip
+  ffmpeg
+)
 
-VENV_PIP="${VENV_PIP:-/venv/main/bin/pip}"
-PYTHON_BIN="${PYTHON_BIN:-/venv/main/bin/python}"
-
-mkdir -p "$CUSTOM_NODES_DIR" "$MODELS_DIR" "$INPUT_DIR"
-
-# =========================
-# MODEL DIRS
-# =========================
-CHECKPOINTS_DIR="$MODELS_DIR/checkpoints"
-DIFFUSION_DIR="$MODELS_DIR/diffusion_models"
-UNET_DIR="$MODELS_DIR/unet"
-TEXT_ENCODERS_DIR="$MODELS_DIR/text_encoders"
-VAE_DIR="$MODELS_DIR/vae"
-LORAS_DIR="$MODELS_DIR/loras"
-CONTROLNET_DIR="$MODELS_DIR/controlnet"
-BBOX_DIR="$MODELS_DIR/ultralytics/bbox"
-SEGM_DIR="$MODELS_DIR/ultralytics/segm"
-SAMS_DIR="$MODELS_DIR/sams"
-SAM_DIR="$MODELS_DIR/sam"
-SAM_MODELS_DIR="$MODELS_DIR/sam_models"
-SEEDVR2_DIR="$MODELS_DIR/SEEDVR2"
-
-mkdir -p \
-  "$CHECKPOINTS_DIR" \
-  "$DIFFUSION_DIR" \
-  "$UNET_DIR" \
-  "$TEXT_ENCODERS_DIR" \
-  "$VAE_DIR" \
-  "$LORAS_DIR" \
-  "$CONTROLNET_DIR" \
-  "$BBOX_DIR" \
-  "$SEGM_DIR" \
-  "$SAMS_DIR" \
-  "$SAM_DIR" \
-  "$SAM_MODELS_DIR" \
-  "$SEEDVR2_DIR"
-
-# =========================
-# APT / PIP
-# =========================
 echo "📦 Installing system packages..."
 apt-get update -y
-apt-get install -y \
-  git wget curl aria2 unzip rsync ca-certificates jq \
-  libgl1 libglib2.0-0 build-essential
+apt-get install -y "${APT_PKGS[@]}"
 
-echo "🐍 Installing python deps..."
-if [ -x "$VENV_PIP" ]; then
-  "$VENV_PIP" install --upgrade pip setuptools wheel
-  "$VENV_PIP" install --upgrade huggingface_hub hf_transfer safetensors
+if [ -x /venv/main/bin/python ]; then
+  PYTHON_BIN="/venv/main/bin/python"
+  PIP_BIN="/venv/main/bin/pip"
 else
-  pip install --upgrade pip setuptools wheel
-  pip install --upgrade huggingface_hub hf_transfer safetensors
+  PYTHON_BIN="python3"
+  PIP_BIN="python3 -m pip"
 fi
 
-# =========================
-# HELPERS
-# =========================
-log() {
-  echo -e "$1"
-}
+echo "🐍 Python: $PYTHON_BIN"
+echo "📦 Installing Python helper packages..."
+"$PYTHON_BIN" -m pip install -U pip setuptools wheel
+"$PYTHON_BIN" -m pip install -U huggingface_hub hf_transfer safetensors
 
-ensure_file_nonzero() {
-  local f="$1"
-  if [ ! -s "$f" ]; then
-    echo "❌ File missing or empty: $f"
-    exit 1
+clone_or_update() {
+  local repo_url="$1"
+  local target_dir="$2"
+
+  if [ -d "$target_dir/.git" ]; then
+    echo "🔄 Updating $(basename "$target_dir")"
+    git -C "$target_dir" fetch --all --prune || true
+    git -C "$target_dir" reset --hard origin/HEAD || true
+    git -C "$target_dir" pull --rebase || true
+  else
+    echo "📥 Cloning $(basename "$target_dir")"
+    rm -rf "$target_dir"
+    git clone --depth 1 "$repo_url" "$target_dir"
   fi
 }
 
-download_with_aria2() {
-  local url="$1"
-  local out_dir="$2"
-  local out_name="$3"
+install_requirements_if_exist() {
+  local repo_dir="$1"
 
-  mkdir -p "$out_dir"
+  if [ -f "$repo_dir/requirements.txt" ]; then
+    echo "📦 Installing requirements for $(basename "$repo_dir")"
+    "$PYTHON_BIN" -m pip install -r "$repo_dir/requirements.txt" || true
+  fi
 
-  log "⬇️ Downloading: $out_name"
-  aria2c \
-    --allow-overwrite=true \
-    --continue=true \
-    --max-connection-per-server=16 \
-    --split=16 \
-    --min-split-size=1M \
-    --dir="$out_dir" \
-    --out="$out_name" \
-    "$url"
-
-  ensure_file_nonzero "$out_dir/$out_name"
+  if [ -f "$repo_dir/requirements-cuda.txt" ]; then
+    echo "📦 Installing CUDA requirements for $(basename "$repo_dir")"
+    "$PYTHON_BIN" -m pip install -r "$repo_dir/requirements-cuda.txt" || true
+  fi
 }
 
 download_if_missing() {
@@ -110,72 +110,101 @@ download_if_missing() {
   local out_dir="$2"
   local out_name="$3"
 
-  if [ -s "$out_dir/$out_name" ]; then
-    log "✅ Exists: $out_name"
+  mkdir -p "$out_dir"
+
+  if [ -f "$out_dir/$out_name" ]; then
+    echo "✅ Exists: $out_name"
     return 0
   fi
 
-  download_with_aria2 "$url" "$out_dir" "$out_name"
+  echo "📥 Downloading: $out_name"
+  aria2c \
+    --console-log-level=warn \
+    --summary-interval=15 \
+    -c -x 16 -s 16 -k 1M \
+    --file-allocation=none \
+    "$url" \
+    -d "$out_dir" \
+    -o "$out_name"
 }
 
-clone_or_update_node() {
-  local repo="$1"
-  local dir_name="$2"
-  local target="$CUSTOM_NODES_DIR/$dir_name"
+snapshot_lora_repo() {
+  local repo_id="$1"
+  local local_dir="$2"
 
-  if [ -d "$target/.git" ]; then
-    log "🔄 Updating node: $dir_name"
-    git -C "$target" pull --ff-only || true
-  else
-    log "📥 Cloning node: $dir_name"
-    git clone --depth 1 "$repo" "$target"
-  fi
+  echo "📥 Syncing LoRA repo: $repo_id"
+  mkdir -p "$local_dir"
+
+  "$PYTHON_BIN" - <<PY
+from huggingface_hub import snapshot_download
+
+snapshot_download(
+    repo_id="$repo_id",
+    local_dir="$local_dir",
+    local_dir_use_symlinks=False,
+    allow_patterns=["*.safetensors", "*.pt", "*.ckpt", "*.bin"],
+    resume_download=True
+)
+
+print("LoRA repo synced:", "$repo_id")
+PY
 }
 
-install_requirements_if_present() {
-  local node_dir="$1"
-  if [ -f "$node_dir/requirements.txt" ]; then
-    log "📚 Installing requirements: $(basename "$node_dir")"
-    if [ -x "$VENV_PIP" ]; then
-      "$VENV_PIP" install -r "$node_dir/requirements.txt" || true
-    else
-      pip install -r "$node_dir/requirements.txt" || true
-    fi
-  fi
-}
+echo "========================================"
+echo "📚 CLONING / UPDATING CUSTOM NODES"
+echo "========================================"
 
-# =========================
-# CUSTOM NODES
-# =========================
-log "🧩 Installing custom nodes..."
+clone_or_update "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git" "$CUSTOM_NODES_DIR/ComfyUI-Impact-Pack"
+clone_or_update "https://github.com/ltdrdata/ComfyUI-Impact-Subpack.git" "$CUSTOM_NODES_DIR/ComfyUI-Impact-Subpack"
+clone_or_update "https://github.com/rgthree/rgthree-comfy.git" "$CUSTOM_NODES_DIR/rgthree-comfy"
+clone_or_update "https://github.com/kijai/ComfyUI-KJNodes.git" "$CUSTOM_NODES_DIR/ComfyUI-KJNodes"
+clone_or_update "https://github.com/cubiq/ComfyUI_essentials.git" "$CUSTOM_NODES_DIR/ComfyUI_essentials"
+clone_or_update "https://github.com/chrisgoringe/cg-use-everywhere.git" "$CUSTOM_NODES_DIR/cg-use-everywhere"
+clone_or_update "https://github.com/pythongosssss/ComfyUI-Custom-Scripts.git" "$CUSTOM_NODES_DIR/ComfyUI-Custom-Scripts"
+clone_or_update "https://github.com/ZhiHui6/zhihui_nodes_comfyui.git" "$CUSTOM_NODES_DIR/zhihui_nodes_comfyui"
+clone_or_update "https://github.com/Azornes/Comfyui-Resolution-Master.git" "$CUSTOM_NODES_DIR/Comfyui-Resolution-Master"
+clone_or_update "https://github.com/PGCRT/CRT-Nodes.git" "$CUSTOM_NODES_DIR/CRT-Nodes"
+clone_or_update "https://github.com/ClownsharkBatwing/RES4LYF.git" "$CUSTOM_NODES_DIR/RES4LYF"
+clone_or_update "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler.git" "$CUSTOM_NODES_DIR/ComfyUI-SeedVR2_VideoUpscaler"
+clone_or_update "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git" "$CUSTOM_NODES_DIR/ComfyUI-VideoHelperSuite"
+clone_or_update "https://github.com/WASasquatch/was-node-suite-comfyui.git" "$CUSTOM_NODES_DIR/was-node-suite-comfyui"
+clone_or_update "https://github.com/teskor-hub/comfyui-teskors-utils.git" "$CUSTOM_NODES_DIR/comfyui-teskors-utils"
 
-clone_or_update_node "https://github.com/rgthree/rgthree-comfy.git" "rgthree-comfy"
-clone_or_update_node "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git" "ComfyUI-Impact-Pack"
-clone_or_update_node "https://github.com/ltdrdata/ComfyUI-Impact-Subpack.git" "ComfyUI-Impact-Subpack"
-clone_or_update_node "https://github.com/kijai/ComfyUI-KJNodes.git" "ComfyUI-KJNodes"
-clone_or_update_node "https://github.com/cubiq/ComfyUI_essentials.git" "ComfyUI_essentials"
-clone_or_update_node "https://github.com/chrisgoringe/cg-use-everywhere.git" "cg-use-everywhere"
-clone_or_update_node "https://github.com/pythongosssss/ComfyUI-Custom-Scripts.git" "ComfyUI-Custom-Scripts"
-clone_or_update_node "https://github.com/ZhiHui6/zhihui_nodes_comfyui.git" "zhihui_nodes_comfyui"
-clone_or_update_node "https://github.com/fsdymy/ComfyUI_fsdymy.git" "ComfyUI_fsdymy"
-clone_or_update_node "https://github.com/shiimizu/ComfyUI-TinyBreaker.git" "ComfyUI-TinyBreaker" || true
-clone_or_update_node "https://github.com/AlnVX/ComfyUI-SeedVR2_VideoUpscaler.git" "ComfyUI-SeedVR2_VideoUpscaler" || true
-clone_or_update_node "https://github.com/azornes/ComfyUI-ResolutionMaster.git" "ComfyUI-ResolutionMaster" || true
-clone_or_update_node "https://github.com/crt-nodes/CRT-Nodes.git" "CRT-Nodes" || true
-clone_or_update_node "https://github.com/pythongosssss/ComfyUI-WD14-Tagger.git" "ComfyUI-WD14-Tagger" || true
+echo "========================================"
+echo "📦 INSTALLING NODE REQUIREMENTS"
+echo "========================================"
 
-log "📚 Installing custom node requirements..."
-for node in "$CUSTOM_NODES_DIR"/*; do
-  [ -d "$node" ] || continue
-  install_requirements_if_present "$node"
+for repo in \
+  "$CUSTOM_NODES_DIR/ComfyUI-Impact-Pack" \
+  "$CUSTOM_NODES_DIR/ComfyUI-Impact-Subpack" \
+  "$CUSTOM_NODES_DIR/rgthree-comfy" \
+  "$CUSTOM_NODES_DIR/ComfyUI-KJNodes" \
+  "$CUSTOM_NODES_DIR/ComfyUI_essentials" \
+  "$CUSTOM_NODES_DIR/cg-use-everywhere" \
+  "$CUSTOM_NODES_DIR/ComfyUI-Custom-Scripts" \
+  "$CUSTOM_NODES_DIR/zhihui_nodes_comfyui" \
+  "$CUSTOM_NODES_DIR/Comfyui-Resolution-Master" \
+  "$CUSTOM_NODES_DIR/CRT-Nodes" \
+  "$CUSTOM_NODES_DIR/RES4LYF" \
+  "$CUSTOM_NODES_DIR/ComfyUI-SeedVR2_VideoUpscaler" \
+  "$CUSTOM_NODES_DIR/ComfyUI-VideoHelperSuite" \
+  "$CUSTOM_NODES_DIR/was-node-suite-comfyui" \
+  "$CUSTOM_NODES_DIR/comfyui-teskors-utils"
+do
+  install_requirements_if_exist "$repo"
 done
 
-# =========================
-# CORE MODELS
-# =========================
-log "🧠 Downloading core models..."
+echo "========================================"
+echo "🧹 CLEANING OLD CACHES"
+echo "========================================"
 
-# === ОСТАВЛЯЕМ ИМЕННО ЭТОТ FIX ДЛЯ QWEN / T5 SIZE ===
+find "$CUSTOM_NODES_DIR" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+
+echo "========================================"
+echo "🤖 DOWNLOADING REQUIRED MODELS"
+echo "========================================"
+
+# Z-Image Turbo
 download_if_missing \
   "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors" \
   "$TEXT_ENCODERS_DIR" \
@@ -196,41 +225,35 @@ download_if_missing \
   "$CONTROLNET_DIR" \
   "Z-Image-Turbo-Fun-Controlnet-Union.safetensors"
 
-# =========================
-# LORA
-# =========================
-log "🎨 Downloading LoRA..."
-
+# Доп. text encoder
 download_if_missing \
-  "https://huggingface.co/Durdomcore/Maeline/resolve/ff1cff370485174914b9644df0d5450e2fe8c2cb/bueno-z_000001250.safetensors" \
-  "$LORAS_DIR" \
-  "bueno-z_000001250.safetensors"
+  "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5-xxl-encoder-fp8-e4m3fn-scaled.safetensors" \
+  "$TEXT_ENCODERS_DIR" \
+  "umt5-xxl-encoder-fp8-e4m3fn-scaled.safetensors"
 
-# =========================
-# SAM FIX
-# =========================
-log "🩹 SAM fix..."
-
+# === УСИЛЕННЫЙ SAM FIX ===
+echo "📥 SAM Model + Multiple Symlinks (фикс SAMLoader)..."
 download_if_missing \
   "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth" \
-  "$SAMS_DIR" \
+  "$SAM_DIR" \
   "sam_vit_b_01ec64.pth"
 
-mkdir -p "$SAM_DIR" "$SAM_MODELS_DIR" "$MODELS_DIR/sams"
+# Создаём все пути, которые могут использовать разные версии Impact/SAMLoader
+mkdir -p "$SAM_ALT_DIR_1" "$SAM_ALT_DIR_2"
 
-ln -sfn "$SAMS_DIR/sam_vit_b_01ec64.pth" "$SAM_DIR/sam_vit_b_01ec64.pth"
-ln -sfn "$SAMS_DIR/sam_vit_b_01ec64.pth" "$SAM_MODELS_DIR/sam_vit_b_01ec64.pth"
-ln -sfn "$SAMS_DIR/sam_vit_b_01ec64.pth" "$MODELS_DIR/sams/sam_vit_b_01ec64.pth"
+ln -sfn "$SAM_DIR/sam_vit_b_01ec64.pth" "$SAM_ALT_DIR_1/sam_vit_b_01ec64.pth" 2>/dev/null || true
+ln -sfn "$SAM_DIR/sam_vit_b_01ec64.pth" "$SAM_ALT_DIR_2/sam_vit_b_01ec64.pth" 2>/dev/null || true
 
-# Доп. совместимость для разных паков
-ln -sfn "$SAMS_DIR" "$MODELS_DIR/sam_folder" 2>/dev/null || true
-ln -sfn "$SAMS_DIR" "$MODELS_DIR/sam_repository" 2>/dev/null || true
+ln -sfn "$SAM_DIR" "$MODELS_DIR/sam" 2>/dev/null || true
+ln -sfn "$SAM_DIR" "$MODELS_DIR/sam_models" 2>/dev/null || true
+ln -sfn "$SAM_DIR" "$MODELS_DIR/sams" 2>/dev/null || true
 
-# =========================
-# IMPACT / BBOX MODELS
-# =========================
-log "🎯 Downloading bbox / detector models..."
+# Дополнительная страховка: если symlink не понравится конкретной сборке
+cp -fn "$SAM_DIR/sam_vit_b_01ec64.pth" "$SAM_ALT_DIR_1/sam_vit_b_01ec64.pth" 2>/dev/null || true
+cp -fn "$SAM_DIR/sam_vit_b_01ec64.pth" "$SAM_ALT_DIR_2/sam_vit_b_01ec64.pth" 2>/dev/null || true
 
+# Ultralytics detectors
+echo "📥 Ultralytics detectors..."
 download_if_missing \
   "https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8s.pt" \
   "$BBOX_DIR" \
@@ -241,95 +264,54 @@ download_if_missing \
   "$BBOX_DIR" \
   "hand_yolov8s.pt"
 
-# Если workflow ожидает Eyeful_v2-Paired.pt, делаем совместимый алиас
-ln -sfn "$BBOX_DIR/face_yolov8s.pt" "$BBOX_DIR/Eyeful_v2-Paired.pt"
-
-# Если workflow ожидает bbox/hand_yolov8s.pt по другому имени
-ln -sfn "$BBOX_DIR/hand_yolov8s.pt" "$BBOX_DIR/bbox_hand_yolov8s.pt" 2>/dev/null || true
-
-# =========================
-# SEEDVR2
-# =========================
-log "🎥 Downloading SeedVR2 models..."
-
 download_if_missing \
-  "https://huggingface.co/AlnVX/SeedVR2_VideoUpscaler/resolve/main/seedvr2_7b_fp16.safetensors" \
-  "$SEEDVR2_DIR" \
-  "seedvr2_7b_fp16.safetensors" || true
+  "https://huggingface.co/Bingsu/adetailer/resolve/main/person_yolov8s-seg.pt" \
+  "$SEGM_DIR" \
+  "person_yolov8s-seg.pt"
 
-download_if_missing \
-  "https://huggingface.co/AlnVX/SeedVR2_VideoUpscaler/resolve/main/seedvr2_vae_fp16.safetensors" \
-  "$SEEDVR2_DIR" \
-  "seedvr2_vae_fp16.safetensors" || true
+# Алиас для workflow, где используется своё имя bbox-модели
+ln -sf "$BBOX_DIR/face_yolov8s.pt" "$BBOX_DIR/Eyeful_v2-Paired.pt" 2>/dev/null || true
 
-# =========================
-# EXTRA COMPATIBILITY LINKS
-# =========================
-log "🔗 Creating compatibility symlinks..."
+echo "========================================"
+echo "🎨 DOWNLOADING YOUR LORA"
+echo "========================================"
 
-# Иногда паки ищут z-image в unet
-ln -sfn "$DIFFUSION_DIR/z_image_turbo_bf16.safetensors" "$UNET_DIR/z_image_turbo_bf16.safetensors" 2>/dev/null || true
+snapshot_lora_repo "Durdomcore/Maeline" "$LORAS_DIR/Durdomcore_Maeline"
 
-# Иногда паки ищут qwen в clip или text encoder под тем же именем
-mkdir -p "$MODELS_DIR/clip"
-ln -sfn "$TEXT_ENCODERS_DIR/qwen_3_4b.safetensors" "$MODELS_DIR/clip/qwen_3_4b.safetensors" 2>/dev/null || true
-
-# =========================
-# FINAL ASSERTS
-# =========================
-log "✅ Running final checks..."
-
-REQUIRED_FILES=(
-  "$TEXT_ENCODERS_DIR/qwen_3_4b.safetensors"
-  "$DIFFUSION_DIR/z_image_turbo_bf16.safetensors"
-  "$VAE_DIR/ae.safetensors"
-  "$CONTROLNET_DIR/Z-Image-Turbo-Fun-Controlnet-Union.safetensors"
-  "$LORAS_DIR/bueno-z_000001250.safetensors"
-  "$SAMS_DIR/sam_vit_b_01ec64.pth"
-  "$BBOX_DIR/face_yolov8s.pt"
-  "$BBOX_DIR/hand_yolov8s.pt"
-)
-
-for f in "${REQUIRED_FILES[@]}"; do
-  ensure_file_nonzero "$f"
+find "$LORAS_DIR/Durdomcore_Maeline" -type f \( -iname "*.safetensors" -o -iname "*.ckpt" -o -iname "*.pt" \) | while read -r f; do
+  base="$(basename "$f")"
+  if [ ! -f "$LORAS_DIR/$base" ]; then
+    echo "🔗 Copying LoRA to root loras: $base"
+    cp -f "$f" "$LORAS_DIR/$base"
+  fi
 done
 
-# =========================
-# DEBUG OUTPUT
-# =========================
-echo
-echo "================ FINAL DEBUG ================"
-echo "-- custom_nodes --"
-ls -1 "$CUSTOM_NODES_DIR" | sort || true
+echo "========================================"
+echo "🔍 SANITY CHECK"
+echo "========================================"
 
-echo
-echo "-- text_encoders --"
-ls -1 "$TEXT_ENCODERS_DIR" | sort || true
+echo "TEXT_ENCODERS:"
+ls -lah "$TEXT_ENCODERS_DIR" || true
 
-echo
-echo "-- diffusion_models --"
-ls -1 "$DIFFUSION_DIR" | sort || true
+echo "SAM PATHS:"
+ls -lah "$SAM_DIR" || true
+ls -lah "$SAM_ALT_DIR_1" || true
+ls -lah "$SAM_ALT_DIR_2" || true
 
-echo
-echo "-- vae --"
-ls -1 "$VAE_DIR" | sort || true
+echo "ULTRALYTICS BBOX:"
+ls -lah "$BBOX_DIR" || true
 
-echo
-echo "-- loras --"
-ls -1 "$LORAS_DIR" | sort || true
+echo "ULTRALYTICS SEGM:"
+ls -lah "$SEGM_DIR" || true
 
-echo
-echo "-- controlnet --"
-ls -1 "$CONTROLNET_DIR" | sort || true
+echo "LORAS ROOT:"
+ls -lah "$LORAS_DIR" | tail -50 || true
 
-echo
-echo "-- bbox --"
-ls -1 "$BBOX_DIR" | sort || true
-
-echo
-echo "-- sams --"
-ls -1 "$SAMS_DIR" | sort || true
-
-echo "============================================"
-echo "✅ DURDOM X-MODE PHOTO V2.1 - PROVISION DONE"
-echo "♻️ Полностью перезапусти инстанс / ComfyUI после установки"
+echo "========================================"
+echo "✅ MAXIMUM FULL PROVISION FINISHED"
+echo "========================================"
+echo "Теперь:"
+echo "1) Полностью перезапусти инстанс / ComfyUI"
+echo "2) Обнови страницу"
+echo "3) Открой workflow заново"
+echo "4) Проверь SAMLoader / FaceDetailer"
