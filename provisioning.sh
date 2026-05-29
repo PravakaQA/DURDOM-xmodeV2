@@ -2,13 +2,12 @@
 set -euo pipefail
 
 echo "========================================"
-echo "🚀 DURDOM X-MODE PHOTO V2.1 — OLD BASE + SAFE FIXES"
+echo "🚀 DURDOM X-MODE PHOTO V2.1 — FINAL PROVISION V2 + HF DOWNLOADER"
 echo "========================================"
 
 COMFY_DIR="${COMFY_DIR:-/workspace/ComfyUI}"
 CUSTOM_NODES_DIR="${CUSTOM_NODES_DIR:-$COMFY_DIR/custom_nodes}"
 MODELS_DIR="${MODELS_DIR:-$COMFY_DIR/models}"
-WORKFLOWS_DIR="$COMFY_DIR/user/default/workflows"
 
 CHECKPOINTS_DIR="$MODELS_DIR/checkpoints"
 DIFFUSION_DIR="$MODELS_DIR/diffusion_models"
@@ -30,7 +29,6 @@ SEGM_DIR="$MODELS_DIR/ultralytics/segm"
 
 mkdir -p \
   "$CUSTOM_NODES_DIR" \
-  "$WORKFLOWS_DIR" \
   "$CHECKPOINTS_DIR" \
   "$DIFFUSION_DIR" \
   "$UNET_DIR" \
@@ -79,7 +77,6 @@ else
 fi
 
 echo "🐍 Python: $PYTHON_BIN"
-
 "$PYTHON_BIN" -m pip install -U "pip<26.2" "setuptools<83" "wheel<0.48"
 "$PYTHON_BIN" -m pip install -U "huggingface_hub<1.0" safetensors hf_transfer
 
@@ -89,16 +86,16 @@ clone_or_update() {
 
   if [ -d "$target_dir/.git" ]; then
     echo "🔄 Updating $(basename "$target_dir")"
-    git -C "$target_dir" fetch --all --tags --prune || true
+    git -C "$target_dir" fetch --all --prune || true
     git -C "$target_dir" reset --hard origin/HEAD || true
     git -C "$target_dir" pull --ff-only || true
   elif [ -d "$target_dir" ]; then
     echo "⚠️ Folder exists without .git, recreating: $(basename "$target_dir")"
     rm -rf "$target_dir"
-    git clone "$repo_url" "$target_dir"
+    git clone --depth 1 "$repo_url" "$target_dir"
   else
     echo "📥 Cloning $(basename "$target_dir")"
-    git clone "$repo_url" "$target_dir"
+    git clone --depth 1 "$repo_url" "$target_dir"
   fi
 }
 
@@ -154,7 +151,6 @@ download_if_missing() {
 copy_if_exists() {
   local src="$1"
   local dst="$2"
-
   if [ -f "$src" ]; then
     mkdir -p "$(dirname "$dst")"
     cp -f "$src" "$dst" || true
@@ -167,7 +163,6 @@ fallback_install_teskors_utils() {
   fi
 
   echo "⚠️ Git clone for comfyui-teskors-utils failed, trying HF fallback..."
-
   "$PYTHON_BIN" - <<PY
 import os, shutil
 from huggingface_hub import snapshot_download
@@ -196,16 +191,7 @@ PY
 }
 
 echo "========================================"
-echo "🧹 CLEANING DUPLICATE NODE FOLDERS ONLY"
-echo "========================================"
-
-# Не удаляем рабочие основные папки, только возможные дубли после Manager.
-rm -rf "$CUSTOM_NODES_DIR/comfyui-kjnodes" || true
-rm -rf "$CUSTOM_NODES_DIR/crt-nodes" || true
-rm -rf "$CUSTOM_NODES_DIR/seedvr2_videoupscaler" || true
-
-echo "========================================"
-echo "📚 CLONING CUSTOM NODES — OLD WORKING BASE"
+echo "📚 CLONING CUSTOM NODES"
 echo "========================================"
 
 clone_or_update "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git" "$CUSTOM_NODES_DIR/ComfyUI-Impact-Pack" || true
@@ -268,42 +254,9 @@ do
 done
 
 echo "========================================"
-echo "🔧 MINIMAL POST-REQUIREMENTS FIXES"
-echo "========================================"
-
-# Минимальные фиксы, которые не пересобирают всё окружение агрессивно.
-# ftfy/onnxruntime часто нужны для Qwen/Seed/детекторов.
-"$PYTHON_BIN" -m pip install -U \
-  ftfy \
-  onnxruntime-gpu \
-  qwen-vl-utils \
-  "huggingface_hub<1.0" \
-  safetensors \
-  hf_transfer || true
-
-# Qwen3VLBasic требует новый transformers.
-# Ставим мягко без force-reinstall всего окружения.
-"$PYTHON_BIN" -m pip install -U "transformers>=4.57.0,<5.0.0" "tokenizers>=0.22.0,<0.23.0" || true
-
-# Если flash-attn поставился криво, он может ломать импорт SeedVR2/Qwen.
-# Удаляем только flash-attn, НЕ трогаем xformers, чтобы не ломать базовую сборку.
-"$PYTHON_BIN" -m pip uninstall -y flash-attn flash_attn || true
-
-echo "========================================"
-echo "📂 DOWNLOADING X-MODE WORKFLOW"
-echo "========================================"
-
-download_if_missing \
-  "https://raw.githubusercontent.com/PravakaQA/DURDOM-xmodeV2/refs/heads/main/DURDOM%20X%20MODE%20PHOTO%20V2.1.json" \
-  "$WORKFLOWS_DIR" \
-  "DURDOM_X_MODE_PHOTO_V2_1.json"
-
-echo "========================================"
 echo "🧹 CLEANING PY CACHE"
 echo "========================================"
-
 find "$CUSTOM_NODES_DIR" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-find "$COMFY_DIR" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 
 echo "========================================"
 echo "🤖 DOWNLOADING REQUIRED MODELS"
@@ -404,7 +357,6 @@ download_if_missing \
 echo "========================================"
 echo "🔎 VERIFY PINNED COMMITS"
 echo "========================================"
-
 git -C "$CUSTOM_NODES_DIR/ComfyUI-Impact-Pack" rev-parse HEAD || true
 git -C "$CUSTOM_NODES_DIR/ComfyUI-Impact-Subpack" rev-parse HEAD || true
 git -C "$CUSTOM_NODES_DIR/ComfyUI-Custom-Scripts" rev-parse HEAD || true
@@ -418,47 +370,14 @@ git -C "$CUSTOM_NODES_DIR/Comfyui-Resolution-Master" rev-parse HEAD || true
 git -C "$CUSTOM_NODES_DIR/ComfyUI_HuggingFace_Downloader" rev-parse HEAD || true
 
 echo "========================================"
-echo "🔎 FINAL IMPORT CHECKS"
+echo "🔎 FINAL CHECK"
 echo "========================================"
-
-"$PYTHON_BIN" - <<'PY' || true
-try:
-    import ftfy
-    print("✅ ftfy OK")
-except Exception as e:
-    print("⚠️ ftfy error:", e)
-
-try:
-    import onnxruntime
-    print("✅ onnxruntime OK")
-except Exception as e:
-    print("⚠️ onnxruntime error:", e)
-
-try:
-    from transformers import Qwen3VLForConditionalGeneration
-    print("✅ Qwen3VLForConditionalGeneration OK")
-except Exception as e:
-    print("⚠️ Qwen3VLForConditionalGeneration warning:", e)
-
-try:
-    import flash_attn
-    print("⚠️ flash_attn still installed")
-except Exception:
-    print("✅ flash_attn not installed")
-PY
-
-echo "========================================"
-echo "🔎 FINAL FILE CHECK"
-echo "========================================"
-
-echo "--- WORKFLOWS ---"; ls -lah "$WORKFLOWS_DIR" || true
 echo "--- SAMS ---"; ls -lah "$SAMS_DIR" || true
 echo "--- SAM ---"; ls -lah "$SAM_DIR" || true
 echo "--- SAM_MODELS ---"; ls -lah "$SAM_MODELS_DIR" || true
 echo "--- ULTRALYTICS BBOX ---"; ls -lah "$BBOX_DIR" || true
 echo "--- MODEL PATCHES ---"; ls -lah "$MODEL_PATCHES_DIR" || true
 echo "--- CLIP ---"; ls -lah "$CLIP_DIR" || true
-echo "--- TEXT_ENCODERS ---"; ls -lah "$TEXT_ENCODERS_DIR" || true
 echo "--- UNET ---"; ls -lah "$UNET_DIR" || true
 echo "--- VAE ---"; ls -lah "$VAE_DIR" || true
 echo "--- CHECKPOINTS ---"; ls -lah "$CHECKPOINTS_DIR" || true
@@ -466,10 +385,10 @@ echo "--- SEEDVR2 ---"; ls -lah "$SEEDVR2_DIR" || true
 echo "--- LORAS ---"; ls -lah "$LORAS_DIR" | tail -50 || true
 
 echo "========================================"
-echo "✅ DURDOM X-MODE PHOTO V2.1 OLD BASE + SAFE FIXES FINISHED"
+echo "✅ FINAL PROVISION V2 + HF DOWNLOADER FINISHED"
 echo "========================================"
-echo "1) Это старый рабочий шаблон как база"
-echo "2) Не смешивай с Animator v2 скриптом"
-echo "3) Не жми Update All в Manager"
-echo "4) После provision перезапусти карточку / ComfyUI"
-echo "5) Workflow лежит в ComfyUI → Workflows"
+echo "1) ПОЛНОСТЬЮ пересоздай контейнер"
+echo "2) не жми Update All в Manager"
+echo "3) дождись конца provision"
+echo "4) потом открывай workflow"
+echo "5) для клиентов: вставляйте ПРЯМУЮ ссылку на .safetensors"
