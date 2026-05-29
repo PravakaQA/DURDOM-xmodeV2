@@ -2,7 +2,7 @@
 set -euo pipefail
 
 echo "========================================"
-echo "🚀 DURDOM X-MODE PHOTO V2.1 — CLEAN FIXED PROVISION"
+echo "🚀 DURDOM X-MODE PHOTO V2.1 — OLD BASE + SAFE FIXES"
 echo "========================================"
 
 COMFY_DIR="${COMFY_DIR:-/workspace/ComfyUI}"
@@ -55,19 +55,22 @@ export HF_HUB_DISABLE_XET=1
 export HF_HUB_ENABLE_HF_TRANSFER=0
 export HF_TRANSFER=0
 
+APT_PKGS=(
+  git
+  wget
+  curl
+  aria2
+  unzip
+  jq
+  rsync
+  ca-certificates
+  python3-pip
+  ffmpeg
+)
+
 echo "📦 Installing system packages..."
 apt-get update -y
-apt-get install -y \
-  git \
-  wget \
-  curl \
-  aria2 \
-  unzip \
-  jq \
-  rsync \
-  ca-certificates \
-  python3-pip \
-  ffmpeg
+apt-get install -y "${APT_PKGS[@]}"
 
 if [ -x /venv/main/bin/python ]; then
   PYTHON_BIN="/venv/main/bin/python"
@@ -77,70 +80,25 @@ fi
 
 echo "🐍 Python: $PYTHON_BIN"
 
-echo "========================================"
-echo "🧹 CLEANING WRONG / POLLUTED NODES"
-echo "========================================"
-
-# ВАЖНО: это PHOTO X-mode. Animator/WAN тут не нужны.
-rm -rf "$CUSTOM_NODES_DIR/ComfyUI-WanVideoWrapper" || true
-rm -rf "$CUSTOM_NODES_DIR/ComfyUI-WanAnimatePreprocess" || true
-rm -rf "$CUSTOM_NODES_DIR/ComfyUI-SAM3" || true
-
-# Убираем дубли, которые могли остаться после Manager / других скриптов
-rm -rf "$CUSTOM_NODES_DIR/comfyui-kjnodes" || true
-rm -rf "$CUSTOM_NODES_DIR/ComfyUI-KJNodes" || true
-rm -rf "$CUSTOM_NODES_DIR/crt-nodes" || true
-rm -rf "$CUSTOM_NODES_DIR/CRT-Nodes" || true
-rm -rf "$CUSTOM_NODES_DIR/seedvr2_videoupscaler" || true
-rm -rf "$CUSTOM_NODES_DIR/ComfyUI-SeedVR2_VideoUpscaler" || true
-rm -rf "$CUSTOM_NODES_DIR/zhihui_nodes_comfyui" || true
-
-echo "========================================"
-echo "📦 PYTHON DEPS — SEEDVR2 / QWEN / XMODE FIX"
-echo "========================================"
-
 "$PYTHON_BIN" -m pip install -U "pip<26.2" "setuptools<83" "wheel<0.48"
+"$PYTHON_BIN" -m pip install -U "huggingface_hub<1.0" safetensors hf_transfer
 
-# Фикс против flash_attn KeyError и конфликтов transformers/diffusers
-"$PYTHON_BIN" -m pip uninstall -y flash-attn flash_attn || true
-
-"$PYTHON_BIN" -m pip install --force-reinstall \
-  "huggingface_hub==0.34.4" \
-  "transformers==4.49.0" \
-  "diffusers==0.32.2" \
-  "accelerate==1.8.1" \
-  "tokenizers==0.21.4" \
-  "safetensors" \
-  "ftfy" \
-  "einops" \
-  "timm" \
-  "pillow" \
-  "numpy" \
-  "scipy" \
-  "opencv-python" \
-  "opencv-python-headless" \
-  "imageio" \
-  "imageio-ffmpeg" \
-  "onnxruntime-gpu" \
-  "qwen-vl-utils"
-
-clone_fresh() {
+clone_or_update() {
   local repo_url="$1"
   local target_dir="$2"
 
-  echo "📥 Cloning $(basename "$target_dir")"
-  rm -rf "$target_dir"
-  git clone "$repo_url" "$target_dir"
-}
-
-checkout_if_possible() {
-  local repo_dir="$1"
-  local ref="$2"
-
-  if [ -d "$repo_dir/.git" ]; then
-    echo "📌 Pinning $(basename "$repo_dir") → $ref"
-    git -C "$repo_dir" fetch --all --tags || true
-    git -C "$repo_dir" checkout "$ref" || true
+  if [ -d "$target_dir/.git" ]; then
+    echo "🔄 Updating $(basename "$target_dir")"
+    git -C "$target_dir" fetch --all --tags --prune || true
+    git -C "$target_dir" reset --hard origin/HEAD || true
+    git -C "$target_dir" pull --ff-only || true
+  elif [ -d "$target_dir" ]; then
+    echo "⚠️ Folder exists without .git, recreating: $(basename "$target_dir")"
+    rm -rf "$target_dir"
+    git clone "$repo_url" "$target_dir"
+  else
+    echo "📥 Cloning $(basename "$target_dir")"
+    git clone "$repo_url" "$target_dir"
   fi
 }
 
@@ -173,6 +131,7 @@ download_if_missing() {
   fi
 
   echo "📥 Downloading: $out_name"
+  rm -f "$out_dir/$out_name.part"
 
   aria2c \
     --allow-overwrite=true \
@@ -237,41 +196,51 @@ PY
 }
 
 echo "========================================"
-echo "📚 CLONING X-MODE CUSTOM NODES"
+echo "🧹 CLEANING DUPLICATE NODE FOLDERS ONLY"
 echo "========================================"
 
-clone_fresh "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git" "$CUSTOM_NODES_DIR/ComfyUI-Impact-Pack"
-clone_fresh "https://github.com/ltdrdata/ComfyUI-Impact-Subpack.git" "$CUSTOM_NODES_DIR/ComfyUI-Impact-Subpack"
-clone_fresh "https://github.com/rgthree/rgthree-comfy.git" "$CUSTOM_NODES_DIR/rgthree-comfy"
-clone_fresh "https://github.com/kijai/ComfyUI-KJNodes.git" "$CUSTOM_NODES_DIR/ComfyUI-KJNodes"
-clone_fresh "https://github.com/cubiq/ComfyUI_essentials.git" "$CUSTOM_NODES_DIR/ComfyUI_essentials"
-clone_fresh "https://github.com/chrisgoringe/cg-use-everywhere.git" "$CUSTOM_NODES_DIR/cg-use-everywhere"
-clone_fresh "https://github.com/pythongosssss/ComfyUI-Custom-Scripts.git" "$CUSTOM_NODES_DIR/ComfyUI-Custom-Scripts"
-clone_fresh "https://github.com/ZhiHui6/zhihui_nodes_comfyui.git" "$CUSTOM_NODES_DIR/zhihui_nodes_comfyui"
-clone_fresh "https://github.com/Azornes/Comfyui-Resolution-Master.git" "$CUSTOM_NODES_DIR/Comfyui-Resolution-Master"
-clone_fresh "https://github.com/plugcrypt/CRT-Nodes.git" "$CUSTOM_NODES_DIR/CRT-Nodes"
-clone_fresh "https://github.com/ClownsharkBatwing/RES4LYF.git" "$CUSTOM_NODES_DIR/RES4LYF"
-clone_fresh "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler.git" "$CUSTOM_NODES_DIR/seedvr2_videoupscaler"
-clone_fresh "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git" "$CUSTOM_NODES_DIR/ComfyUI-VideoHelperSuite"
-clone_fresh "https://github.com/WASasquatch/was-node-suite-comfyui.git" "$CUSTOM_NODES_DIR/was-node-suite-comfyui"
-clone_fresh "https://github.com/jnxmx/ComfyUI_HuggingFace_Downloader.git" "$CUSTOM_NODES_DIR/ComfyUI_HuggingFace_Downloader" || true
-
-clone_fresh "https://github.com/teskor-hub/comfyui-teskors-utils.git" "$CUSTOM_NODES_DIR/comfyui-teskors-utils" || fallback_install_teskors_utils
+# Не удаляем рабочие основные папки, только возможные дубли после Manager.
+rm -rf "$CUSTOM_NODES_DIR/comfyui-kjnodes" || true
+rm -rf "$CUSTOM_NODES_DIR/crt-nodes" || true
+rm -rf "$CUSTOM_NODES_DIR/seedvr2_videoupscaler" || true
 
 echo "========================================"
-echo "📌 PINNING OLD WORKING X-MODE COMMITS"
+echo "📚 CLONING CUSTOM NODES — OLD WORKING BASE"
 echo "========================================"
 
-checkout_if_possible "$CUSTOM_NODES_DIR/ComfyUI-Impact-Pack" "429d0159ad429e64d2b3916e6e7be9c22d025c3c"
-checkout_if_possible "$CUSTOM_NODES_DIR/ComfyUI-Impact-Subpack" "50c7b71a6a224734cc9b21963c6d1926816a97f1"
-checkout_if_possible "$CUSTOM_NODES_DIR/ComfyUI-Custom-Scripts" "609f3afaa74b2f88ef9ce8d939626065e3247469"
-checkout_if_possible "$CUSTOM_NODES_DIR/seedvr2_videoupscaler" "4490bd1f482e026674543386bb2a4d176da245b9"
-checkout_if_possible "$CUSTOM_NODES_DIR/RES4LYF" "0dc91c00c4c3fb38e7874fcd7a2a327765e8882c"
-checkout_if_possible "$CUSTOM_NODES_DIR/zhihui_nodes_comfyui" "7ce81cd4d384d8e82543574b0e26cec08a182164"
-checkout_if_possible "$CUSTOM_NODES_DIR/ComfyUI-KJNodes" "d0d61754bf7fa57f2abb4714cdf79058f5862a55"
-checkout_if_possible "$CUSTOM_NODES_DIR/CRT-Nodes" "71649f7b71ad14cedb79182e65ee19edd2943374"
-checkout_if_possible "$CUSTOM_NODES_DIR/comfyui-teskors-utils" "c4a8cd1b6f8b724b055cbe371d6192e42babe103"
-checkout_if_possible "$CUSTOM_NODES_DIR/Comfyui-Resolution-Master" "6f5756bb9b72047565b3f07f2a6aeb92ddce8fbe"
+clone_or_update "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git" "$CUSTOM_NODES_DIR/ComfyUI-Impact-Pack" || true
+clone_or_update "https://github.com/ltdrdata/ComfyUI-Impact-Subpack.git" "$CUSTOM_NODES_DIR/ComfyUI-Impact-Subpack" || true
+clone_or_update "https://github.com/rgthree/rgthree-comfy.git" "$CUSTOM_NODES_DIR/rgthree-comfy" || true
+clone_or_update "https://github.com/kijai/ComfyUI-KJNodes.git" "$CUSTOM_NODES_DIR/ComfyUI-KJNodes" || true
+clone_or_update "https://github.com/cubiq/ComfyUI_essentials.git" "$CUSTOM_NODES_DIR/ComfyUI_essentials" || true
+clone_or_update "https://github.com/chrisgoringe/cg-use-everywhere.git" "$CUSTOM_NODES_DIR/cg-use-everywhere" || true
+clone_or_update "https://github.com/pythongosssss/ComfyUI-Custom-Scripts.git" "$CUSTOM_NODES_DIR/ComfyUI-Custom-Scripts" || true
+clone_or_update "https://github.com/ZhiHui6/zhihui_nodes_comfyui.git" "$CUSTOM_NODES_DIR/zhihui_nodes_comfyui" || true
+clone_or_update "https://github.com/Azornes/Comfyui-Resolution-Master.git" "$CUSTOM_NODES_DIR/Comfyui-Resolution-Master" || true
+clone_or_update "https://github.com/plugcrypt/CRT-Nodes.git" "$CUSTOM_NODES_DIR/CRT-Nodes" || true
+clone_or_update "https://github.com/ClownsharkBatwing/RES4LYF.git" "$CUSTOM_NODES_DIR/RES4LYF" || true
+clone_or_update "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler.git" "$CUSTOM_NODES_DIR/ComfyUI-SeedVR2_VideoUpscaler" || true
+clone_or_update "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git" "$CUSTOM_NODES_DIR/ComfyUI-VideoHelperSuite" || true
+clone_or_update "https://github.com/WASasquatch/was-node-suite-comfyui.git" "$CUSTOM_NODES_DIR/was-node-suite-comfyui" || true
+clone_or_update "https://github.com/teskor-hub/comfyui-teskors-utils.git" "$CUSTOM_NODES_DIR/comfyui-teskors-utils" || fallback_install_teskors_utils
+
+# HF downloader for clients
+clone_or_update "https://github.com/jnxmx/ComfyUI_HuggingFace_Downloader.git" "$CUSTOM_NODES_DIR/ComfyUI_HuggingFace_Downloader" || true
+
+echo "========================================"
+echo "📌 PINNING TO OLD TEMPLATE COMMITS"
+echo "========================================"
+
+git -C "$CUSTOM_NODES_DIR/ComfyUI-Impact-Pack" checkout 429d0159ad429e64d2b3916e6e7be9c22d025c3c || true
+git -C "$CUSTOM_NODES_DIR/ComfyUI-Impact-Subpack" checkout 50c7b71a6a224734cc9b21963c6d1926816a97f1 || true
+git -C "$CUSTOM_NODES_DIR/ComfyUI-Custom-Scripts" checkout 609f3afaa74b2f88ef9ce8d939626065e3247469 || true
+git -C "$CUSTOM_NODES_DIR/ComfyUI-SeedVR2_VideoUpscaler" checkout 4490bd1f482e026674543386bb2a4d176da245b9 || true
+git -C "$CUSTOM_NODES_DIR/RES4LYF" checkout 0dc91c00c4c3fb38e7874fcd7a2a327765e8882c || true
+git -C "$CUSTOM_NODES_DIR/zhihui_nodes_comfyui" checkout 7ce81cd4d384d8e82543574b0e26cec08a182164 || true
+git -C "$CUSTOM_NODES_DIR/ComfyUI-KJNodes" checkout d0d61754bf7fa57f2abb4714cdf79058f5862a55 || true
+git -C "$CUSTOM_NODES_DIR/CRT-Nodes" checkout 71649f7b71ad14cedb79182e65ee19edd2943374 || true
+git -C "$CUSTOM_NODES_DIR/comfyui-teskors-utils" checkout c4a8cd1b6f8b724b055cbe371d6192e42babe103 || true
+git -C "$CUSTOM_NODES_DIR/Comfyui-Resolution-Master" checkout 6f5756bb9b72047565b3f07f2a6aeb92ddce8fbe || true
 
 echo "========================================"
 echo "📦 INSTALLING NODE REQUIREMENTS"
@@ -289,7 +258,7 @@ for repo in \
   "$CUSTOM_NODES_DIR/Comfyui-Resolution-Master" \
   "$CUSTOM_NODES_DIR/CRT-Nodes" \
   "$CUSTOM_NODES_DIR/RES4LYF" \
-  "$CUSTOM_NODES_DIR/seedvr2_videoupscaler" \
+  "$CUSTOM_NODES_DIR/ComfyUI-SeedVR2_VideoUpscaler" \
   "$CUSTOM_NODES_DIR/ComfyUI-VideoHelperSuite" \
   "$CUSTOM_NODES_DIR/was-node-suite-comfyui" \
   "$CUSTOM_NODES_DIR/comfyui-teskors-utils" \
@@ -299,30 +268,42 @@ do
 done
 
 echo "========================================"
-echo "📦 FINAL DEP PIN AFTER REQUIREMENTS"
+echo "🔧 MINIMAL POST-REQUIREMENTS FIXES"
 echo "========================================"
 
-# Повторно фиксируем после requirements, потому что некоторые ноды могут перезатереть версии.
+# Минимальные фиксы, которые не пересобирают всё окружение агрессивно.
+# ftfy/onnxruntime часто нужны для Qwen/Seed/детекторов.
+"$PYTHON_BIN" -m pip install -U \
+  ftfy \
+  onnxruntime-gpu \
+  qwen-vl-utils \
+  "huggingface_hub<1.0" \
+  safetensors \
+  hf_transfer || true
+
+# Qwen3VLBasic требует новый transformers.
+# Ставим мягко без force-reinstall всего окружения.
+"$PYTHON_BIN" -m pip install -U "transformers>=4.57.0,<5.0.0" "tokenizers>=0.22.0,<0.23.0" || true
+
+# Если flash-attn поставился криво, он может ломать импорт SeedVR2/Qwen.
+# Удаляем только flash-attn, НЕ трогаем xformers, чтобы не ломать базовую сборку.
 "$PYTHON_BIN" -m pip uninstall -y flash-attn flash_attn || true
 
-"$PYTHON_BIN" -m pip install --force-reinstall \
-  "huggingface_hub==0.34.4" \
-  "transformers==4.49.0" \
-  "diffusers==0.32.2" \
-  "accelerate==1.8.1" \
-  "tokenizers==0.21.4" \
-  "ftfy" \
-  "onnxruntime-gpu" \
-  "qwen-vl-utils"
-
 echo "========================================"
-echo "📂 DOWNLOADING WORKFLOW TO COMFY WORKFLOWS"
+echo "📂 DOWNLOADING X-MODE WORKFLOW"
 echo "========================================"
 
 download_if_missing \
   "https://raw.githubusercontent.com/PravakaQA/DURDOM-xmodeV2/refs/heads/main/DURDOM%20X%20MODE%20PHOTO%20V2.1.json" \
   "$WORKFLOWS_DIR" \
   "DURDOM_X_MODE_PHOTO_V2_1.json"
+
+echo "========================================"
+echo "🧹 CLEANING PY CACHE"
+echo "========================================"
+
+find "$CUSTOM_NODES_DIR" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+find "$COMFY_DIR" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 
 echo "========================================"
 echo "🤖 DOWNLOADING REQUIRED MODELS"
@@ -421,31 +402,74 @@ download_if_missing \
   "4xUltrasharp_4xUltrasharpV10.pt"
 
 echo "========================================"
-echo "🧹 CLEANING PY CACHE"
+echo "🔎 VERIFY PINNED COMMITS"
 echo "========================================"
 
-find "$CUSTOM_NODES_DIR" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+git -C "$CUSTOM_NODES_DIR/ComfyUI-Impact-Pack" rev-parse HEAD || true
+git -C "$CUSTOM_NODES_DIR/ComfyUI-Impact-Subpack" rev-parse HEAD || true
+git -C "$CUSTOM_NODES_DIR/ComfyUI-Custom-Scripts" rev-parse HEAD || true
+git -C "$CUSTOM_NODES_DIR/ComfyUI-SeedVR2_VideoUpscaler" rev-parse HEAD || true
+git -C "$CUSTOM_NODES_DIR/RES4LYF" rev-parse HEAD || true
+git -C "$CUSTOM_NODES_DIR/zhihui_nodes_comfyui" rev-parse HEAD || true
+git -C "$CUSTOM_NODES_DIR/ComfyUI-KJNodes" rev-parse HEAD || true
+git -C "$CUSTOM_NODES_DIR/CRT-Nodes" rev-parse HEAD || true
+git -C "$CUSTOM_NODES_DIR/comfyui-teskors-utils" rev-parse HEAD || true
+git -C "$CUSTOM_NODES_DIR/Comfyui-Resolution-Master" rev-parse HEAD || true
+git -C "$CUSTOM_NODES_DIR/ComfyUI_HuggingFace_Downloader" rev-parse HEAD || true
 
 echo "========================================"
-echo "🔎 FINAL CHECK"
+echo "🔎 FINAL IMPORT CHECKS"
+echo "========================================"
+
+"$PYTHON_BIN" - <<'PY' || true
+try:
+    import ftfy
+    print("✅ ftfy OK")
+except Exception as e:
+    print("⚠️ ftfy error:", e)
+
+try:
+    import onnxruntime
+    print("✅ onnxruntime OK")
+except Exception as e:
+    print("⚠️ onnxruntime error:", e)
+
+try:
+    from transformers import Qwen3VLForConditionalGeneration
+    print("✅ Qwen3VLForConditionalGeneration OK")
+except Exception as e:
+    print("⚠️ Qwen3VLForConditionalGeneration warning:", e)
+
+try:
+    import flash_attn
+    print("⚠️ flash_attn still installed")
+except Exception:
+    print("✅ flash_attn not installed")
+PY
+
+echo "========================================"
+echo "🔎 FINAL FILE CHECK"
 echo "========================================"
 
 echo "--- WORKFLOWS ---"; ls -lah "$WORKFLOWS_DIR" || true
-echo "--- CUSTOM NODES ---"; ls -lah "$CUSTOM_NODES_DIR" | head -80 || true
-echo "--- SEEDVR2 NODE ---"; ls -lah "$CUSTOM_NODES_DIR/seedvr2_videoupscaler" || true
-echo "--- QWEN NODE ---"; ls -lah "$CUSTOM_NODES_DIR/zhihui_nodes_comfyui" || true
-echo "--- SEEDVR2 MODELS ---"; ls -lah "$SEEDVR2_DIR" || true
+echo "--- SAMS ---"; ls -lah "$SAMS_DIR" || true
+echo "--- SAM ---"; ls -lah "$SAM_DIR" || true
+echo "--- SAM_MODELS ---"; ls -lah "$SAM_MODELS_DIR" || true
+echo "--- ULTRALYTICS BBOX ---"; ls -lah "$BBOX_DIR" || true
+echo "--- MODEL PATCHES ---"; ls -lah "$MODEL_PATCHES_DIR" || true
 echo "--- CLIP ---"; ls -lah "$CLIP_DIR" || true
 echo "--- TEXT_ENCODERS ---"; ls -lah "$TEXT_ENCODERS_DIR" || true
+echo "--- UNET ---"; ls -lah "$UNET_DIR" || true
 echo "--- VAE ---"; ls -lah "$VAE_DIR" || true
-echo "--- MODEL PATCHES ---"; ls -lah "$MODEL_PATCHES_DIR" || true
-echo "--- ULTRALYTICS BBOX ---"; ls -lah "$BBOX_DIR" || true
+echo "--- CHECKPOINTS ---"; ls -lah "$CHECKPOINTS_DIR" || true
+echo "--- SEEDVR2 ---"; ls -lah "$SEEDVR2_DIR" || true
+echo "--- LORAS ---"; ls -lah "$LORAS_DIR" | tail -50 || true
 
 echo "========================================"
-echo "✅ DURDOM X-MODE PHOTO V2.1 CLEAN FIXED FINISHED"
+echo "✅ DURDOM X-MODE PHOTO V2.1 OLD BASE + SAFE FIXES FINISHED"
 echo "========================================"
-echo "1) Это PHOTO X-mode, без Animator/WAN мусора"
-echo "2) SeedVR2LoadDiTModel / SeedVR2LoadVAEModel / SeedVR2VideoUpscaler должны появиться"
-echo "3) Qwen3VLBasic должен появиться"
-echo "4) Не жми Update All в Manager"
-echo "5) После provision перезапусти ComfyUI"
+echo "1) Это старый рабочий шаблон как база"
+echo "2) Не смешивай с Animator v2 скриптом"
+echo "3) Не жми Update All в Manager"
+echo "4) После provision перезапусти карточку / ComfyUI"
+echo "5) Workflow лежит в ComfyUI → Workflows"
