@@ -171,6 +171,9 @@ pin_commit "$CUSTOM_NODES_DIR/ComfyUI-Impact-Pack" "429d0159ad429e64d2b3916e6e7b
 pin_commit "$CUSTOM_NODES_DIR/ComfyUI-Impact-Subpack" "50c7b71a6a224734cc9b21963c6d1926816a97f1"
 pin_commit "$CUSTOM_NODES_DIR/ComfyUI-Custom-Scripts" "609f3afaa74b2f88ef9ce8d939626065e3247469"
 pin_commit "$CUSTOM_NODES_DIR/ComfyUI-SeedVR2_VideoUpscaler" "4490bd1f482e026674543386bb2a4d176da245b9"
+# RES4LYF: КРИТИЧНО. Июльский main использует новый io.Schema в beta/samplers.py,
+# и ClownsharKSampler_Beta падает с IndexError на ComfyUI 0.8.2, когда входы
+# options/guides не подключены. Январский 0dc91c00 нового API не использует.
 pin_commit "$CUSTOM_NODES_DIR/RES4LYF" "0dc91c00c4c3fb38e7874fcd7a2a327765e8882c"
 pin_commit "$CUSTOM_NODES_DIR/zhihui_nodes_comfyui" "7ce81cd4d384d8e82543574b0e26cec08a182164"
 pin_commit "$CUSTOM_NODES_DIR/CRT-Nodes" "71649f7b71ad14cedb79182e65ee19edd2943374"
@@ -286,5 +289,14 @@ echo "========== 🔎 FINAL CHECK =========="
 for d in "$CHECKPOINTS_DIR" "$UNET_DIR" "$CLIP_DIR" "$VAE_DIR" "$MODEL_PATCHES_DIR" \
          "$LORAS_DIR" "$BBOX_DIR" "$SAMS_DIR" "$SEEDVR2_DIR" "$UPSCALE_MODELS_DIR"; do
   echo "--- $d ---"; ls -lah "$d" 2>/dev/null | tail -20
+done
+echo "========== 🔎 ВЕРСИИ КЛЮЧЕВЫХ НОД =========="
+for n in RES4LYF ComfyUI-Impact-Pack ComfyUI-Impact-Subpack CRT-Nodes ComfyUI-SeedVR2_VideoUpscaler ComfyUI-KJNodes; do
+  d="$CUSTOM_NODES_DIR/$n"
+  if [ -d "$d/.git" ]; then
+    printf "  %-34s %s  %s\n" "$n" "$(git -C "$d" rev-parse --short HEAD)" "$(git -C "$d" log -1 --format=%ad --date=short)"
+  else
+    printf "  %-34s (не установлена)\n" "$n"
+  fi
 done
 echo "✅ PROVISION V3 DONE"
