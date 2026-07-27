@@ -11,6 +11,9 @@ set -uo pipefail       # БЕЗ -e: одна упавшая закачка не 
 # ---------- НАСТРОЙКИ ----------
 # Чекпоинт для v1.6.2 (6.94 ГБ). Ставится только если INSTALL_V162=1.
 INSTALL_V162="${INSTALL_V162:-0}"
+# KJNodes: remove = снести (ни один X-mode воркфлоу его не использует -> 0 ошибок)
+#          pin    = поставить 1.2.9 (последняя версия без несовместимых схем)
+KJNODES_MODE="${KJNODES_MODE:-remove}"
 GONZALOMO_URL="${GONZALOMO_URL:-https://huggingface.co/gbrx/GonzaLomo/resolve/main/gonzalomoXLFluxPony_v60PhotoXLDMD.safetensors}"
 # --------------------------------
 
@@ -69,6 +72,22 @@ clone_or_update() {
   fi
 }
 
+# ВАЖНО: git clone --depth 1 отдаёт только вершину, поэтому
+# `git checkout <старый_хеш>` падает с "reference is not a tree",
+# а из-за `|| true` это происходило МОЛЧА -> все пины не применялись.
+# Здесь коммит сначала до-качивается, и результат печатается.
+pin_commit() {
+  local dir="$1" ref="$2" name
+  name="$(basename "$dir")"
+  [ -d "$dir/.git" ] || { echo "  ⚠️  $name: нет репозитория, пин пропущен"; return 0; }
+  git -C "$dir" fetch --depth 1 origin "$ref" >/dev/null 2>&1 || git -C "$dir" fetch --unshallow >/dev/null 2>&1 || true
+  if git -C "$dir" checkout -q -f "$ref" 2>/dev/null; then
+    echo "  ✅ $name -> $(git -C "$dir" rev-parse --short HEAD)"
+  else
+    echo "  ❌ $name: коммит $ref недоступен, остаётся $(git -C "$dir" rev-parse --short HEAD)"
+  fi
+}
+
 install_reqs() {
   local d="$1"
   [ -f "$d/requirements.txt" ] && "$PYTHON_BIN" -m pip install -r "$d/requirements.txt" || true
@@ -112,7 +131,6 @@ echo "========== 📚 CUSTOM NODES =========="
 clone_or_update "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git"            "$CUSTOM_NODES_DIR/ComfyUI-Impact-Pack"
 clone_or_update "https://github.com/ltdrdata/ComfyUI-Impact-Subpack.git"         "$CUSTOM_NODES_DIR/ComfyUI-Impact-Subpack"
 clone_or_update "https://github.com/rgthree/rgthree-comfy.git"                   "$CUSTOM_NODES_DIR/rgthree-comfy"
-clone_or_update "https://github.com/kijai/ComfyUI-KJNodes.git"                   "$CUSTOM_NODES_DIR/ComfyUI-KJNodes"
 clone_or_update "https://github.com/cubiq/ComfyUI_essentials.git"                "$CUSTOM_NODES_DIR/ComfyUI_essentials"
 clone_or_update "https://github.com/chrisgoringe/cg-use-everywhere.git"          "$CUSTOM_NODES_DIR/cg-use-everywhere"
 clone_or_update "https://github.com/pythongosssss/ComfyUI-Custom-Scripts.git"    "$CUSTOM_NODES_DIR/ComfyUI-Custom-Scripts"
@@ -126,6 +144,17 @@ clone_or_update "https://github.com/WASasquatch/was-node-suite-comfyui.git"     
 clone_or_update "https://github.com/teskor-hub/comfyui-teskors-utils.git"        "$CUSTOM_NODES_DIR/comfyui-teskors-utils" || fallback_teskors
 clone_or_update "https://github.com/jnxmx/ComfyUI_HuggingFace_Downloader.git"    "$CUSTOM_NODES_DIR/ComfyUI_HuggingFace_Downloader"
 
+# --- KJNodes: причина ошибок search_aliases / advanced / BoundingBox ---
+# ПРОВЕРЕНО: ни DURDOM V2.1, ни v1.6.2 не используют ни одной KJNodes-ноды.
+if [ "$KJNODES_MODE" = "remove" ]; then
+  rm -rf "$CUSTOM_NODES_DIR/ComfyUI-KJNodes" "$CUSTOM_NODES_DIR/comfyui-kjnodes"
+  echo "🧹 KJNodes удалён (не используется ни одним воркфлоу) — ошибок в логе не будет"
+else
+  clone_or_update "https://github.com/kijai/ComfyUI-KJNodes.git" "$CUSTOM_NODES_DIR/ComfyUI-KJNodes"
+  # 1.2.9 — последняя версия БЕЗ search_aliases / advanced / io.BoundingBox
+  pin_commit "$CUSTOM_NODES_DIR/ComfyUI-KJNodes" "f710f2635dbadbaf1ccf7d25572daa7dfec80bfd"
+fi
+
 # --- ноды ТОЛЬКО для воркфлоу v1.6.2 public (INSTALL_V162=1) ---
 if [ "$INSTALL_V162" = "1" ]; then
   clone_or_update "https://github.com/crystian/ComfyUI-Crystools.git"            "$CUSTOM_NODES_DIR/ComfyUI-Crystools"
@@ -137,17 +166,16 @@ if [ "$INSTALL_V162" = "1" ]; then
   echo "    Manager -> Install Missing Custom Nodes (одна кнопка, доставит остаток)."
 fi
 
-echo "========== 📌 PINS =========="
-git -C "$CUSTOM_NODES_DIR/ComfyUI-Impact-Pack"           checkout 429d0159ad429e64d2b3916e6e7be9c22d025c3c || true
-git -C "$CUSTOM_NODES_DIR/ComfyUI-Impact-Subpack"        checkout 50c7b71a6a224734cc9b21963c6d1926816a97f1 || true
-git -C "$CUSTOM_NODES_DIR/ComfyUI-Custom-Scripts"        checkout 609f3afaa74b2f88ef9ce8d939626065e3247469 || true
-git -C "$CUSTOM_NODES_DIR/ComfyUI-SeedVR2_VideoUpscaler" checkout 4490bd1f482e026674543386bb2a4d176da245b9 || true
-git -C "$CUSTOM_NODES_DIR/RES4LYF"                       checkout 0dc91c00c4c3fb38e7874fcd7a2a327765e8882c || true
-git -C "$CUSTOM_NODES_DIR/zhihui_nodes_comfyui"          checkout 7ce81cd4d384d8e82543574b0e26cec08a182164 || true
-git -C "$CUSTOM_NODES_DIR/ComfyUI-KJNodes"               checkout d0d61754bf7fa57f2abb4714cdf79058f5862a55 || true
-git -C "$CUSTOM_NODES_DIR/CRT-Nodes"                     checkout 71649f7b71ad14cedb79182e65ee19edd2943374 || true
-git -C "$CUSTOM_NODES_DIR/comfyui-teskors-utils"         checkout c4a8cd1b6f8b724b055cbe371d6192e42babe103 || true
-git -C "$CUSTOM_NODES_DIR/Comfyui-Resolution-Master"     checkout 6f5756bb9b72047565b3f07f2a6aeb92ddce8fbe || true
+echo "========== 📌 PINS (теперь реально применяются) =========="
+pin_commit "$CUSTOM_NODES_DIR/ComfyUI-Impact-Pack" "429d0159ad429e64d2b3916e6e7be9c22d025c3c"
+pin_commit "$CUSTOM_NODES_DIR/ComfyUI-Impact-Subpack" "50c7b71a6a224734cc9b21963c6d1926816a97f1"
+pin_commit "$CUSTOM_NODES_DIR/ComfyUI-Custom-Scripts" "609f3afaa74b2f88ef9ce8d939626065e3247469"
+pin_commit "$CUSTOM_NODES_DIR/ComfyUI-SeedVR2_VideoUpscaler" "4490bd1f482e026674543386bb2a4d176da245b9"
+pin_commit "$CUSTOM_NODES_DIR/RES4LYF" "0dc91c00c4c3fb38e7874fcd7a2a327765e8882c"
+pin_commit "$CUSTOM_NODES_DIR/zhihui_nodes_comfyui" "7ce81cd4d384d8e82543574b0e26cec08a182164"
+pin_commit "$CUSTOM_NODES_DIR/CRT-Nodes" "71649f7b71ad14cedb79182e65ee19edd2943374"
+pin_commit "$CUSTOM_NODES_DIR/comfyui-teskors-utils" "c4a8cd1b6f8b724b055cbe371d6192e42babe103"
+pin_commit "$CUSTOM_NODES_DIR/Comfyui-Resolution-Master" "6f5756bb9b72047565b3f07f2a6aeb92ddce8fbe"
 
 echo "========== 📦 REQUIREMENTS =========="
 for repo in "$CUSTOM_NODES_DIR"/*/ ; do [ -d "$repo" ] && install_reqs "$repo"; done
@@ -180,13 +208,10 @@ download_if_missing "https://huggingface.co/ashllay/YOLO_Models/resolve/main/bbo
 
 download_if_missing "https://huggingface.co/MochaPixel/4XUltrasharpV10/resolve/main/4xUltrasharp_4xUltrasharpV10.pt" "$UPSCALE_MODELS_DIR" "4xUltrasharp_4xUltrasharpV10.pt"
 
-echo "========== 🤖 МОДЕЛИ (только V2.1: SeedVR2 + твои лоры) =========="
+echo "========== 🤖 МОДЕЛИ (только V2.1: SeedVR2 + чекпоинт детейлера) =========="
 download_if_missing "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/seedvr2_ema_7b_sharp_fp16.safetensors" "$SEEDVR2_DIR" "seedvr2_ema_7b_sharp_fp16.safetensors"
 download_if_missing "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/ema_vae_fp16.safetensors" "$SEEDVR2_DIR" "ema_vae_fp16.safetensors"
 download_if_missing "https://huggingface.co/gazsuv/sudoku/resolve/main/detect.safetensors" "$CHECKPOINTS_DIR" "detect.safetensors"
-download_if_missing "https://huggingface.co/gazsuv/sudoku/resolve/main/XXX.safetensors"  "$LORAS_DIR" "XXX.safetensors"
-download_if_missing "https://huggingface.co/gazsuv/sudoku/resolve/main/real.safetensors" "$LORAS_DIR" "real.safetensors"
-download_if_missing "https://huggingface.co/gazsuv/sudoku/resolve/main/gpu.safetensors"  "$LORAS_DIR" "gpu.safetensors"
 
 echo "========== 🤖 МОДЕЛИ (только v1.6.2 public) =========="
 if [ "$INSTALL_V162" = "1" ]; then
